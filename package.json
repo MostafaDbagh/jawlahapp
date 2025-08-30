@@ -8,7 +8,13 @@
     "dev": "nodemon src/server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["authentication", "otp", "express", "postgresql", "sequelize"],
+  "keywords": [
+    "authentication",
+    "otp",
+    "express",
+    "postgresql",
+    "sequelize"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {

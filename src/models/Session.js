@@ -59,8 +59,9 @@ const Session = sequelize.define('Session', {
     allowNull: true
   },
   location: {
-    type: DataTypes.GEOMETRY('POINT'),
-    allowNull: true
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'Location coordinates (can be upgraded to GEOMETRY later with PostGIS)'
   },
   is_active: {
     type: DataTypes.BOOLEAN,
