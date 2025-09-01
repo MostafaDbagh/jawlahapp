@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const ResponseHelper = require('./utils/responseHelper');
 require('dotenv').config();
 
 const routes = require('./routes');
@@ -45,49 +46,45 @@ app.use((error, req, res, next) => {
   
   // Sequelize validation errors
   if (error.name === 'SequelizeValidationError') {
-    return res.status(400).json({
-      success: false,
-      message: 'Validation failed',
-      errors: error.errors.map(err => ({
+    return res.status(400).json(
+      ResponseHelper.error('Validation failed', error.errors.map(err => ({
         field: err.path,
         message: err.message
-      }))
-    });
+      })), error.errors.length)
+    );
   }
 
   // Sequelize unique constraint errors
   if (error.name === 'SequelizeUniqueConstraintError') {
-    return res.status(400).json({
-      success: false,
-      message: 'Duplicate entry',
-      errors: error.errors.map(err => ({
+    return res.status(400).json(
+      ResponseHelper.error('Duplicate entry', error.errors.map(err => ({
         field: err.path,
         message: `${err.path} already exists`
-      }))
-    });
+      })), error.errors.length)
+    );
   }
 
   // JWT errors
   if (error.name === 'JsonWebTokenError') {
-    return res.status(401).json({
-      success: false,
-      message: 'Invalid token'
-    });
+    return res.status(401).json(
+      ResponseHelper.error('Invalid token', null, 0)
+    );
   }
 
   if (error.name === 'TokenExpiredError') {
-    return res.status(401).json({
-      success: false,
-      message: 'Token expired'
-    });
+    return res.status(401).json(
+      ResponseHelper.error('Token expired', null, 0)
+    );
   }
 
   // Default error response
-  res.status(error.status || 500).json({
-    success: false,
-    message: error.message || 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-  });
+  res.status(error.status || 500).json(
+    ResponseHelper.error(
+      error.message || 'Internal server error',
+      process.env.NODE_ENV === 'development' ? { stack: error.stack } : null,
+      0
+    )
+  );
 });
 
 module.exports = app;

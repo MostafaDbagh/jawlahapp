@@ -113,15 +113,8 @@ const User = sequelize.define('User', {
   createdAt: 'created_at',
   updatedAt: 'updated_at',
   hooks: {
-    beforeCreate: async (user) => {
-      if (user.password_hash) {
-        // Generate salt and hash password
-        const salt = crypto.randomBytes(32).toString('hex');
-        const hash = await bcrypt.hash(user.password_hash + salt, 12);
-        user.salt = salt;
-        user.password_hash = hash;
-      }
-    },
+    // beforeCreate hook disabled to prevent double hashing
+    // Password hashing is now handled in the controller
     beforeUpdate: async (user) => {
       if (user.changed('password_hash')) {
         // Generate new salt and hash password

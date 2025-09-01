@@ -1,3 +1,4 @@
+
 # 🚀 Jwalah App API Documentation
 
 Complete API reference with examples for all endpoints, authentication, and usage instructions.
@@ -6,6 +7,7 @@ Complete API reference with examples for all endpoints, authentication, and usag
 
 - [Authentication](#authentication)
 - [Base URL & Headers](#base-url--headers)
+- [Response Format](#response-format)
 - [API Endpoints](#api-endpoints)
 - [Error Responses](#error-responses)
 - [Testing Examples](#testing-examples)
@@ -28,6 +30,45 @@ Content-Type: application/json
 Authorization: Bearer <token>  # For protected routes
 ```
 
+## 📡 Response Format
+
+All API responses follow a standardized format:
+
+```json
+{
+  "status": boolean,      // true for success, false for error
+  "data": dynamic,        // Response data (can be null, object, or array)
+  "message": string,      // Human-readable message
+  "count": number         // Number of items returned (optional)
+}
+```
+
+### Success Response Example:
+```json
+{
+  "status": true,
+  "data": {
+    "user": {
+      "user_id": "550e8400-e29b-41d4-a716-446655440000",
+      "username": "john_doe",
+      "email": "john@example.com"
+    }
+  },
+  "message": "User registered successfully",
+  "count": 1
+}
+```
+
+### Error Response Example:
+```json
+{
+  "status": false,
+  "data": null,
+  "message": "User not found",
+  "count": 0
+}
+```
+
 ## 📡 API Endpoints
 
 ### 1. Health Check
@@ -43,10 +84,14 @@ curl -X GET http://localhost:3000/health
 **Response:**
 ```json
 {
-  "success": true,
+  "status": true,
+  "data": {
+    "timestamp": "2024-01-15T10:30:00.000Z",
+    "uptime": 3600.5,
+    "environment": "development"
+  },
   "message": "Server is running",
-  "timestamp": "2024-01-15T10:30:00.000Z",
-  "uptime": 3600.5
+  "count": 1
 }
 ```
 
@@ -84,8 +129,7 @@ curl -X POST http://localhost:3000/api/v1/auth/register \
 **Response (Success - 201):**
 ```json
 {
-  "success": true,
-  "message": "User registered successfully",
+  "status": true,
   "data": {
     "user": {
       "user_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -101,27 +145,31 @@ curl -X POST http://localhost:3000/api/v1/auth/register \
       "updated_at": "2024-01-15T10:30:00.000Z"
     },
     "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "otpSent": true
   },
-  "otpSent": true
+  "message": "User registered successfully",
+  "count": 1
 }
 ```
 
 **Response (Error - 400):**
 ```json
 {
-  "success": false,
-  "message": "Validation failed",
-  "errors": [
+  "status": false,
+  "data": [
     {
       "field": "username",
       "message": "Username can only contain letters, numbers, and underscores"
     }
-  ]
+  ],
+  "message": "Validation failed",
+  "count": 1
 }
 ```
 
 ---
+
 
 ### 3. User Login
 
