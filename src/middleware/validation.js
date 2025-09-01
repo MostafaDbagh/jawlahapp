@@ -1,4 +1,5 @@
 const { body, validationResult } = require('express-validator');
+const ResponseHelper = require('../utils/responseHelper');
 
 // Validation rules for user registration
 const validateRegistration = [
@@ -15,6 +16,7 @@ const validateRegistration = [
     .withMessage('Please provide a valid email address'),
   
   body('phone_number')
+    .optional()
     .isMobilePhone()
     .withMessage('Please provide a valid phone number'),
   
@@ -121,14 +123,16 @@ const validateProfileUpdate = [
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({
-      success: false,
-      message: 'Validation failed',
-      errors: errors.array().map(error => ({
-        field: error.path,
-        message: error.msg
-      }))
-    });
+    return res.status(400).json(
+      ResponseHelper.error(
+        'Validation failed',
+        errors.array().map(error => ({
+          field: error.path,
+          message: error.msg
+        })),
+        errors.array().length
+      )
+    );
   }
   next();
 };

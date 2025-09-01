@@ -1,3 +1,4 @@
+
 const app = require('./app');
 const { connectDB } = require('./config/database');
 const { initDatabase } = require('./config/initDb');
@@ -6,7 +7,7 @@ const otpService = require('./utils/otpService');
 // Import models to establish relationships
 require('./models');
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 
 // Start server function
 const startServer = async () => {

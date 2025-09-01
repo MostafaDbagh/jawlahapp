@@ -2,6 +2,9 @@ const User = require('../models/User');
 const OTP = require('../models/OTP');
 const otpService = require('../utils/otpService');
 const jwtService = require('../utils/jwtService');
+const ResponseHelper = require('../utils/responseHelper');
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { Op } = require('sequelize');
 
 class AuthController {
@@ -22,18 +25,22 @@ class AuthController {
       });
 
       if (existingUser) {
-        return res.status(400).json({
-          success: false,
-          message: 'User with this email, username, or phone number already exists'
-        });
+        return res.status(400).json(
+          ResponseHelper.error('User with this email, username, or phone number already exists', null, 0)
+        );
       }
+
+      // Generate salt and hash password manually
+      const salt = crypto.randomBytes(32).toString('hex');
+      const hashedPassword = await bcrypt.hash(password_hash + salt, 12);
 
       // Create new user
       const user = await User.create({
         username,
         email,
         phone_number,
-        password_hash,
+        password_hash: hashedPassword,
+        salt,
         account_type: account_type || 'CUSTOMER' // Default to customer
       });
 
@@ -52,23 +59,19 @@ class AuthController {
       const accessToken = jwtService.generateAccessToken(user.user_id, user.email);
       const refreshToken = jwtService.generateRefreshToken(user.user_id, user.email);
 
-      res.status(201).json({
-        success: true,
-        message: 'User registered successfully',
-        data: {
+      res.status(201).json(
+        ResponseHelper.success({
           user: user.getPublicProfile(),
           accessToken,
-          refreshToken
-        },
-        otpSent: otpResult.success
-      });
+          refreshToken,
+          otpSent: otpResult.success
+        }, 'User registered successfully', 1)
+      );
     } catch (error) {
       console.error('Registration error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Registration failed',
-        error: error.message
-      });
+      res.status(500).json(
+        ResponseHelper.error('Registration failed', error.message, 0)
+      );
     }
   }
 
@@ -83,26 +86,23 @@ class AuthController {
       });
 
       if (!user) {
-        return res.status(401).json({
-          success: false,
-          message: 'Invalid email or password'
-        });
+        return res.status(401).json(
+          ResponseHelper.error('Invalid email or password', null, 0)
+        );
       }
 
       // Check if user is active
       if (!user.is_active) {
-        return res.status(401).json({
-          success: false,
-          message: 'Account is not active'
-        });
+        return res.status(401).json(
+          ResponseHelper.error('Account is not active', null, 0)
+        );
       }
 
       // Check if account is locked
       if (user.isLocked()) {
-        return res.status(423).json({
-          success: false,
-          message: 'Account is temporarily locked due to multiple failed login attempts'
-        });
+        return res.status(423).json(
+          ResponseHelper.error('Account is temporarily locked due to multiple failed login attempts', null, 0)
+        );
       }
 
       // Verify password
@@ -111,10 +111,9 @@ class AuthController {
         // Increment failed login attempts
         await user.incrementFailedAttempts();
         
-        return res.status(401).json({
-          success: false,
-          message: 'Invalid email or password'
-        });
+        return res.status(401).json(
+          ResponseHelper.error('Invalid email or password', null, 0)
+        );
       }
 
       // Reset failed login attempts on successful login
@@ -127,22 +126,18 @@ class AuthController {
       const accessToken = jwtService.generateAccessToken(user.user_id, user.email);
       const refreshToken = jwtService.generateRefreshToken(user.user_id, user.email);
 
-      res.json({
-        success: true,
-        message: 'Login successful',
-        data: {
+      res.json(
+        ResponseHelper.success({
           user: user.getPublicProfile(),
           accessToken,
           refreshToken
-        }
-      });
+        }, 'Login successful', 1)
+      );
     } catch (error) {
       console.error('Login error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Login failed',
-        error: error.message
-      });
+      res.status(500).json(
+        ResponseHelper.error('Login failed', error.message, 0)
+      );
     }
   }
 
@@ -157,10 +152,9 @@ class AuthController {
       });
 
       if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: 'User not found'
-        });
+        return res.status(404).json(
+          ResponseHelper.error('User not found', null, 0)
+        );
       }
 
       // Send password reset OTP
@@ -171,24 +165,19 @@ class AuthController {
       );
 
       if (otpResult.success) {
-        res.json({
-          success: true,
-          message: 'Password reset OTP sent to your email'
-        });
+        res.json(
+          ResponseHelper.success(null, 'Password reset OTP sent to your email', 0)
+        );
       } else {
-        res.status(500).json({
-          success: false,
-          message: 'Failed to send password reset OTP',
-          error: otpResult.error
-        });
+        res.status(500).json(
+          ResponseHelper.error('Failed to send password reset OTP', otpResult.error, 0)
+        );
       }
     } catch (error) {
       console.error('Password reset request error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Password reset request failed',
-        error: error.message
-      });
+      res.status(500).json(
+        ResponseHelper.error('Password reset request failed', error.message, 0)
+      );
     }
   }
 
@@ -203,10 +192,9 @@ class AuthController {
       });
 
       if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: 'User not found'
-        });
+        return res.status(404).json(
+          ResponseHelper.error('User not found', null, 0)
+        );
       }
 
       // Verify OTP
@@ -218,26 +206,22 @@ class AuthController {
       );
 
       if (!otpVerification.success) {
-        return res.status(400).json({
-          success: false,
-          message: otpVerification.message
-        });
+        return res.status(400).json(
+          ResponseHelper.error(otpVerification.message, null, 0)
+        );
       }
 
       // Update password
       await user.setPassword(newPassword);
 
-      res.json({
-        success: true,
-        message: 'Password reset successfully'
-      });
+      res.json(
+        ResponseHelper.success(null, 'Password reset successfully', 0)
+      );
     } catch (error) {
       console.error('Password reset error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Password reset failed',
-        error: error.message
-      });
+      res.status(500).json(
+        ResponseHelper.error('Password reset failed', error.message, 0)
+      );
     }
   }
 
@@ -267,10 +251,9 @@ class AuthController {
       );
 
       if (!otpVerification.success) {
-        return res.status(400).json({
-          success: false,
-          message: otpVerification.message
-        });
+        return res.status(400).json(
+          ResponseHelper.error(otpVerification.message, null, 0)
+        );
       }
 
       // Update user verification status based on type
@@ -286,20 +269,16 @@ class AuthController {
         });
       }
 
-      res.json({
-        success: true,
-        message: 'OTP verified successfully',
-        data: {
+      res.json(
+        ResponseHelper.success({
           user: user.getPublicProfile()
-        }
-      });
+        }, 'OTP verified successfully', 1)
+      );
     } catch (error) {
       console.error('OTP verification error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'OTP verification failed',
-        error: error.message
-      });
+      res.status(500).json(
+        ResponseHelper.error('OTP verification failed', error.message, 0)
+      );
     }
   }
 
@@ -314,10 +293,9 @@ class AuthController {
       });
 
       if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: 'User not found'
-        });
+        return res.status(404).json(
+          ResponseHelper.error('User not found', null, 0)
+        );
       }
 
       // Send new OTP
@@ -328,43 +306,35 @@ class AuthController {
       );
 
       if (otpResult.success) {
-        res.json({
-          success: true,
-          message: 'OTP resent successfully'
-        });
+        res.json(
+          ResponseHelper.success(null, 'OTP resent successfully', 0)
+        );
       } else {
-        res.status(500).json({
-          success: false,
-          message: 'Failed to resend OTP',
-          error: otpResult.error
-        });
+        res.status(500).json(
+          ResponseHelper.error('Failed to resend OTP', otpResult.error, 0)
+        );
       }
     } catch (error) {
       console.error('OTP resend error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'OTP resend failed',
-        error: error.message
-      });
+      res.status(500).json(
+        ResponseHelper.error('OTP resend failed', error.message, 0)
+      );
     }
   }
 
   // Get user profile
   async getProfile(req, res) {
     try {
-      res.json({
-        success: true,
-        data: {
+      res.json(
+        ResponseHelper.success({
           user: req.user.getPublicProfile()
-        }
-      });
+        }, 'Profile retrieved successfully', 1)
+      );
     } catch (error) {
       console.error('Get profile error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to get profile',
-        error: error.message
-      });
+      res.status(500).json(
+        ResponseHelper.error('Failed to get profile', error.message, 0)
+      );
     }
   }
 
@@ -382,20 +352,16 @@ class AuthController {
 
       await req.user.update(updateData);
 
-      res.json({
-        success: true,
-        message: 'Profile updated successfully',
-        data: {
+      res.json(
+        ResponseHelper.success({
           user: req.user.getPublicProfile()
-        }
-      });
+        }, 'Profile updated successfully', 1)
+      );
     } catch (error) {
       console.error('Profile update error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Profile update failed',
-        error: error.message
-      });
+      res.status(500).json(
+        ResponseHelper.error('Profile update failed', error.message, 0)
+      );
     }
   }
 
@@ -405,50 +371,43 @@ class AuthController {
       const { refreshToken } = req.body;
 
       if (!refreshToken) {
-        return res.status(400).json({
-          success: false,
-          message: 'Refresh token is required'
-        });
+        return res.status(400).json(
+          ResponseHelper.error('Refresh token is required', null, 0)
+        );
       }
 
       // Verify refresh token
       const result = jwtService.verifyToken(refreshToken);
       
       if (!result.success) {
-        return res.status(401).json({
-          success: false,
-          message: 'Invalid refresh token'
-        });
+        return res.status(401).json(
+          ResponseHelper.error('Invalid refresh token', null, 0)
+        );
       }
 
       // Check if user exists and is active
       const user = await User.findByPk(result.payload.userId);
       if (!user || !user.is_active) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not found or account is inactive'
-        });
+        return res.status(401).json(
+          ResponseHelper.error('User not found or account is inactive', null, 0)
+        );
       }
 
       // Generate new tokens
       const newAccessToken = jwtService.generateAccessToken(user.user_id, user.email);
       const newRefreshToken = jwtService.generateRefreshToken(user.user_id, user.email);
 
-      res.json({
-        success: true,
-        message: 'Token refreshed successfully',
-        data: {
+      res.json(
+        ResponseHelper.success({
           accessToken: newAccessToken,
           refreshToken: newRefreshToken
-        }
-      });
+        }, 'Token refreshed successfully', 1)
+      );
     } catch (error) {
       console.error('Token refresh error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Token refresh failed',
-        error: error.message
-      });
+      res.status(500).json(
+        ResponseHelper.error('Token refresh failed', error.message, 0)
+      );
     }
   }
 
@@ -457,17 +416,14 @@ class AuthController {
     try {
       // In a real application, you might want to blacklist the token
       // For now, we'll just return a success message
-      res.json({
-        success: true,
-        message: 'Logged out successfully'
-      });
+      res.json(
+        ResponseHelper.success(null, 'Logged out successfully', 0)
+      );
     } catch (error) {
       console.error('Logout error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Logout failed',
-        error: error.message
-      });
+      res.status(500).json(
+        ResponseHelper.error('Logout failed', error.message, 0)
+      );
     }
   }
 }
