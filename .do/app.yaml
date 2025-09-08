@@ -1,0 +1,29 @@
+name: jwalah-api
+services:
+- name: api
+  source_dir: /
+  github:
+    repo: your-username/jwalahapp
+    branch: main
+  run_command: npm start
+  environment_slug: node-js
+  instance_count: 1
+  instance_size_slug: basic-xxs
+  http_port: 5000
+  routes:
+  - path: /
+  envs:
+  - key: NODE_ENV
+    value: production
+  - key: JWT_SECRET
+    value: your-super-secret-jwt-key-here
+  - key: JWT_ACCESS_EXPIRES_IN
+    value: 15m
+  - key: JWT_REFRESH_EXPIRES_IN
+    value: 7d
+  health_check:
+    http_path: /health
+databases:
+- name: jwalah-postgres
+  engine: PG
+  version: "13"
