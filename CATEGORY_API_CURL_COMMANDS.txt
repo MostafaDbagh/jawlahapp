@@ -1,0 +1,348 @@
+# Category Management API - Complete Reference
+# Server: http://localhost:5000
+# Base URL: /api/v1/categories
+
+================================================================================
+📋 CATEGORY MODEL SCHEMA
+================================================================================
+
+{
+  "id": "UUID (Primary Key, Auto-generated)",
+  "name": "STRING(255) - Required, Unique",
+  "image": "STRING(500) - Optional, URL validation",
+  "has_offer": "DECIMAL(5,4) - Optional, Range 0-1",
+  "free_delivery": "BOOLEAN - Optional, Default false",
+  "created_at": "TIMESTAMP - Auto-generated"
+}
+
+================================================================================
+🔓 PUBLIC ENDPOINTS (No Authentication Required)
+================================================================================
+
+1. GET ALL CATEGORIES
+   URL: GET http://localhost:5000/api/v1/categories
+   
+   CURL:
+   curl -X GET "http://localhost:5000/api/v1/categories"
+   
+   QUERY PARAMETERS:
+   - page: number (default: 1)
+   - limit: number (default: 10, max: 100)
+   - search: string (search by category name)
+   
+   EXAMPLES:
+   curl -X GET "http://localhost:5000/api/v1/categories"
+   curl -X GET "http://localhost:5000/api/v1/categories?page=1&limit=5"
+   curl -X GET "http://localhost:5000/api/v1/categories?search=Electronics"
+   
+   SUCCESS RESPONSE:
+   {
+     "status": true,
+     "data": [
+       {
+         "id": "1e45ef1c-8afe-4b7d-b66d-63d61c307e83",
+         "name": "Electronics",
+         "image": "https://example.com/image.jpg",
+         "has_offer": 0.15,
+         "free_delivery": true,
+         "created_at": "2025-09-03T13:05:09.152Z"
+       }
+     ],
+     "message": "Data retrieved successfully",
+     "count": 1
+   }
+
+2. GET CATEGORY BY ID
+   URL: GET http://localhost:5000/api/v1/categories/{id}
+   
+   CURL:
+   curl -X GET "http://localhost:5000/api/v1/categories/1e45ef1c-8afe-4b7d-b66d-63d61c307e83"
+   
+   SUCCESS RESPONSE:
+   {
+     "status": true,
+     "data": {
+       "id": "1e45ef1c-8afe-4b7d-b66d-63d61c307e83",
+       "name": "Electronics",
+       "image": "https://example.com/image.jpg",
+       "has_offer": 0.15,
+       "free_delivery": true,
+       "created_at": "2025-09-03T13:05:09.152Z"
+     },
+     "message": "Item retrieved successfully",
+     "count": 1
+   }
+   
+   ERROR RESPONSE (404):
+   {
+     "status": false,
+     "data": null,
+     "message": "Category not found",
+     "count": 0
+   }
+
+================================================================================
+🔐 PROTECTED ENDPOINTS (Requires JWT Token)
+================================================================================
+
+3. CREATE CATEGORY
+   URL: POST http://localhost:5000/api/v1/categories
+   
+   HEADERS:
+   Content-Type: application/json
+   Authorization: Bearer YOUR_ACCESS_TOKEN
+   
+   CURL:
+   curl -X POST "http://localhost:5000/api/v1/categories" \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+     -d '{
+       "name": "Electronics",
+       "image": "https://example.com/image.jpg",
+       "has_offer": 0.15,
+       "free_delivery": true
+     }'
+   
+   REQUEST BODY (Required Fields):
+   {
+     "name": "string (required, 1-255 characters)",
+     "image": "string (optional, valid URL)",
+     "has_offer": "number (optional, 0-1)",
+     "free_delivery": "boolean (optional)"
+   }
+   
+   SUCCESS RESPONSE (201):
+   {
+     "status": true,
+     "data": {
+       "id": "1e45ef1c-8afe-4b7d-b66d-63d61c307e83",
+       "name": "Electronics",
+       "image": "https://example.com/image.jpg",
+       "has_offer": 0.15,
+       "free_delivery": true,
+       "created_at": "2025-09-03T13:05:09.152Z"
+     },
+     "message": "Category created successfully",
+     "count": 1
+   }
+   
+   ERROR RESPONSES:
+   - 400: Validation errors
+   - 401: Unauthorized (missing/invalid token)
+   - 409: Category name already exists
+
+4. UPDATE CATEGORY
+   URL: PUT http://localhost:5000/api/v1/categories/{id}
+   
+   HEADERS:
+   Content-Type: application/json
+   Authorization: Bearer YOUR_ACCESS_TOKEN
+   
+   CURL:
+   curl -X PUT "http://localhost:5000/api/v1/categories/1e45ef1c-8afe-4b7d-b66d-63d61c307e83" \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+     -d '{
+       "name": "Electronics & Gadgets",
+       "has_offer": 0.25
+     }'
+   
+   REQUEST BODY (All fields optional):
+   {
+     "name": "string (1-255 characters)",
+     "image": "string (valid URL)",
+     "has_offer": "number (0-1)",
+     "free_delivery": "boolean"
+   }
+   
+   SUCCESS RESPONSE (200):
+   {
+     "status": true,
+     "data": {
+       "id": "1e45ef1c-8afe-4b7d-b66d-63d61c307e83",
+       "name": "Electronics & Gadgets",
+       "image": "https://example.com/image.jpg",
+       "has_offer": 0.25,
+       "free_delivery": true,
+       "created_at": "2025-09-03T13:05:09.152Z"
+     },
+     "message": "Category updated successfully",
+     "count": 1
+   }
+   
+   ERROR RESPONSES:
+   - 400: Validation errors
+   - 401: Unauthorized
+   - 404: Category not found
+   - 409: Category name already exists
+
+5. DELETE CATEGORY
+   URL: DELETE http://localhost:5000/api/v1/categories/{id}
+   
+   HEADERS:
+   Authorization: Bearer YOUR_ACCESS_TOKEN
+   
+   CURL:
+   curl -X DELETE "http://localhost:5000/api/v1/categories/1e45ef1c-8afe-4b7d-b66d-63d61c307e83" \
+     -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+   
+   SUCCESS RESPONSE (200):
+   {
+     "status": true,
+     "data": null,
+     "message": "Category deleted successfully",
+     "count": 0
+   }
+   
+   ERROR RESPONSES:
+   - 401: Unauthorized
+   - 404: Category not found
+
+================================================================================
+🔑 HOW TO GET ACCESS TOKEN
+================================================================================
+
+1. LOGIN TO GET TOKEN:
+   curl -X POST "http://localhost:5000/api/v1/auth/login" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "email": "test999@example.com",
+       "password_hash": "TestPass123"
+     }'
+   
+   RESPONSE:
+   {
+     "status": true,
+     "data": {
+       "user": { ... },
+       "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+       "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+     },
+     "message": "Login successful",
+     "count": 1
+   }
+   
+2. USE TOKEN IN PROTECTED ENDPOINTS:
+   Replace "YOUR_ACCESS_TOKEN" with the actual token from login response
+
+================================================================================
+📝 VALIDATION RULES
+================================================================================
+
+CREATE CATEGORY:
+- name: Required, string, 1-255 characters, unique
+- image: Optional, string, valid URL format
+- has_offer: Optional, number, 0-1 range
+- free_delivery: Optional, boolean
+
+UPDATE CATEGORY:
+- name: Optional, string, 1-255 characters, unique (excluding current category)
+- image: Optional, string, valid URL format
+- has_offer: Optional, number, 0-1 range
+- free_delivery: Optional, boolean
+
+================================================================================
+🚨 ERROR RESPONSES
+================================================================================
+
+VALIDATION ERROR (400):
+{
+  "status": false,
+  "data": null,
+  "message": "Validation failed",
+  "errors": [
+    {
+      "field": "name",
+      "message": "Name is required"
+    }
+  ],
+  "count": 0
+}
+
+UNAUTHORIZED (401):
+{
+  "status": false,
+  "data": null,
+  "message": "Access token is required",
+  "count": 0
+}
+
+NOT FOUND (404):
+{
+  "status": false,
+  "data": null,
+  "message": "Category not found",
+  "count": 0
+}
+
+DUPLICATE NAME (409):
+{
+  "status": false,
+  "data": null,
+  "message": "Category name already exists",
+  "count": 0
+}
+
+================================================================================
+🎯 QUICK TEST COMMANDS
+================================================================================
+
+# Test Public Endpoints (No Token Required)
+curl -X GET "http://localhost:5000/api/v1/categories"
+curl -X GET "http://localhost:5000/api/v1/categories?search=Electronics"
+curl -X GET "http://localhost:5000/api/v1/categories?page=1&limit=2"
+
+# Test Protected Endpoints (Token Required)
+# First get token
+curl -X POST "http://localhost:5000/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test999@example.com", "password_hash": "TestPass123"}'
+
+# Then use token for protected operations
+curl -X POST "http://localhost:5000/api/v1/categories" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -d '{"name": "Test Category", "has_offer": 0.10}'
+
+================================================================================
+📊 RESPONSE FORMAT STANDARD
+================================================================================
+
+All API responses follow this format:
+{
+  "status": boolean,      // true for success, false for error
+  "data": dynamic,        // response data or null
+  "message": string,      // success/error message
+  "count": number         // number of items returned
+}
+
+================================================================================
+🔍 SEARCH AND PAGINATION
+================================================================================
+
+SEARCH:
+- Parameter: ?search=keyword
+- Searches category names (case-insensitive)
+- Uses ILIKE for partial matching
+
+PAGINATION:
+- Parameters: ?page=number&limit=number
+- Page starts from 1
+- Default limit: 10, Maximum: 100
+- Categories ordered by created_at DESC (newest first)
+
+EXAMPLES:
+- Get first 5 categories: ?page=1&limit=5
+- Search electronics: ?search=Electronics
+- Combine both: ?page=1&limit=5&search=Electronics
+
+================================================================================
+📋 POSTMAN COLLECTION VARIABLES
+================================================================================
+
+BASE_URL: http://localhost:5000
+API_VERSION: /api/v1
+CATEGORIES_ENDPOINT: {{BASE_URL}}{{API_VERSION}}/categories
+AUTH_TOKEN: (set after login)
+
+================================================================================
