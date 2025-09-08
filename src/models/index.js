@@ -4,6 +4,8 @@ const AccountType = require('./AccountType');
 const Role = require('./Role');
 const Permission = require('./Permission');
 const Session = require('./Session');
+const Category = require('./Category');
+const Vendor = require('./Vendor');
 
 // Define associations
 User.belongsTo(AccountType, {
@@ -104,5 +106,7 @@ module.exports = {
   AccountType,
   Role,
   Permission,
-  Session
+  Session,
+  Category,
+  Vendor
 };

@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const authRoutes = require('./auth/authRoutes');
+const categoryRoutes = require('./category/categoryRoutes');
+const vendorRoutes = require('./vendor/vendorRoutes');
 const ResponseHelper = require('../utils/responseHelper');
 
 // Health check route
@@ -16,6 +18,8 @@ router.get('/health', (req, res) => {
 
 // API version 1 routes
 router.use('/api/v1/auth', authRoutes);
+router.use('/api/v1/categories', categoryRoutes);
+router.use('/api/v1/vendors', vendorRoutes);
 
 // 404 handler for undefined routes
 router.use('*', (req, res) => {

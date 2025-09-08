@@ -1,0 +1,664 @@
+# Vendor Management API - Complete Reference
+# Server: http://localhost:5000
+# Base URL: /api/v1/vendors
+
+================================================================================
+📋 VENDOR MODEL SCHEMA
+================================================================================
+
+{
+  "id": "UUID (Primary Key, Auto-generated)",
+  "name": "STRING(255) - Required, Unique",
+  "image": "STRING(500) - Optional, URL validation",
+  "about": "TEXT - Optional, Max 2000 characters",
+  "work_time": "JSON - Optional, Working hours object",
+  "location": "JSON - Optional, {lat: Double, lng: Double, city: String}",
+  "subscript_date": "DATETIME - Optional, Subscription start date",
+  "is_active": "BOOLEAN - Optional, Default true",
+  "created_at": "DATETIME - Auto-generated",
+  "rating": "DECIMAL(3,2) - Optional, Range 0.00-5.00, Default 0.00"
+}
+
+================================================================================
+🔓 PUBLIC ENDPOINTS (No Authentication Required)
+================================================================================
+
+1. GET ALL VENDORS
+   URL: GET http://localhost:5000/api/v1/vendors
+   
+   CURL:
+   curl -X GET "http://localhost:5000/api/v1/vendors"
+   
+   QUERY PARAMETERS:
+   - page: number (default: 1)
+   - limit: number (default: 10, max: 100)
+   - search: string (search by vendor name or description)
+   - category_id: string (filter by main category)
+   - sub_category_id: string (filter by sub-category)
+   - min_rating: number (minimum rating filter)
+   - location: string (lat,lng,radius_km format)
+   - free_delivery: boolean (show only vendors with free delivery)
+   - has_offer: boolean (show only vendors with active offers)
+   - sort: string (rating, delivery_fee, min_order, delivery_time, distance, offers_count, id)
+   
+   EXAMPLES:
+   curl -X GET "http://localhost:5000/api/v1/vendors"
+   curl -X GET "http://localhost:5000/api/v1/vendors?page=1&limit=5"
+   curl -X GET "http://localhost:5000/api/v1/vendors?search=pizza"
+   curl -X GET "http://localhost:5000/api/v1/vendors?min_rating=4.0&sort=rating"
+   curl -X GET "http://localhost:5000/api/v1/vendors?location=40.7128,-74.0060,5"
+   
+   SUCCESS RESPONSE:
+   {
+     "status": true,
+     "data": [
+       {
+         "id": "c061b496-cb12-45d1-9f90-29e882a36876",
+         "name": "Pizza Palace Updated",
+         "image": "https://example.com/pizza-palace.jpg",
+         "about": "Updated description - Best pizza in town with fresh ingredients and fast delivery",
+         "work_time": {
+           "fri": "09:00-23:00",
+           "mon": "09:00-22:00",
+           "sat": "10:00-23:00",
+           "sun": "10:00-21:00",
+           "thu": "09:00-22:00",
+           "tue": "09:00-22:00",
+           "wed": "09:00-22:00"
+         },
+         "location": {
+           "lat": 40.7128,
+           "lng": -74.006,
+           "city": "New York"
+         },
+         "is_active": true,
+         "rating": "4.50",
+         "created_at": "2025-09-08T13:54:26.152Z"
+       }
+     ],
+     "message": "Vendors retrieved successfully",
+     "count": 1
+   }
+
+2. GET VENDOR BY ID
+   URL: GET http://localhost:5000/api/v1/vendors/{id}
+   
+   CURL:
+   curl -X GET "http://localhost:5000/api/v1/vendors/c061b496-cb12-45d1-9f90-29e882a36876"
+   
+   SUCCESS RESPONSE:
+   {
+     "status": true,
+     "data": {
+       "id": "c061b496-cb12-45d1-9f90-29e882a36876",
+       "name": "Pizza Palace Updated",
+       "image": "https://example.com/pizza-palace.jpg",
+       "about": "Updated description - Best pizza in town with fresh ingredients and fast delivery",
+       "work_time": {
+         "fri": "09:00-23:00",
+         "mon": "09:00-22:00",
+         "sat": "10:00-23:00",
+         "sun": "10:00-21:00",
+         "thu": "09:00-22:00",
+         "tue": "09:00-22:00",
+         "wed": "09:00-22:00"
+       },
+       "location": {
+         "lat": 40.7128,
+         "lng": -74.006,
+         "city": "New York"
+       },
+       "is_active": true,
+       "rating": "4.50",
+       "created_at": "2025-09-08T13:54:26.152Z",
+       "subscription_active": true
+     },
+     "message": "Vendor retrieved successfully",
+     "count": 1
+   }
+   
+   ERROR RESPONSE (404):
+   {
+     "status": false,
+     "data": null,
+     "message": "Vendor not found",
+     "count": 0
+   }
+
+3. GET POPULAR VENDORS
+   URL: GET http://localhost:5000/api/v1/vendors/popular
+   
+   CURL:
+   curl -X GET "http://localhost:5000/api/v1/vendors/popular"
+   
+   QUERY PARAMETERS:
+   - limit: number (default: 10)
+   
+   EXAMPLES:
+   curl -X GET "http://localhost:5000/api/v1/vendors/popular"
+   curl -X GET "http://localhost:5000/api/v1/vendors/popular?limit=5"
+   
+   SUCCESS RESPONSE:
+   {
+     "status": true,
+     "data": [
+       {
+         "id": "c061b496-cb12-45d1-9f90-29e882a36876",
+         "name": "Pizza Palace Updated",
+         "image": "https://example.com/pizza-palace.jpg",
+         "about": "Updated description - Best pizza in town with fresh ingredients and fast delivery",
+         "work_time": {
+           "fri": "09:00-23:00",
+           "mon": "09:00-22:00",
+           "sat": "10:00-23:00",
+           "sun": "10:00-21:00",
+           "thu": "09:00-22:00",
+           "tue": "09:00-22:00",
+           "wed": "09:00-22:00"
+         },
+         "location": {
+           "lat": 40.7128,
+           "lng": -74.006,
+           "city": "New York"
+         },
+         "is_active": true,
+         "rating": "4.50",
+         "created_at": "2025-09-08T13:54:26.152Z"
+       }
+     ],
+     "message": "Popular vendors retrieved successfully",
+     "count": 1
+   }
+
+4. GET NEARBY VENDORS
+   URL: GET http://localhost:5000/api/v1/vendors/nearby
+   
+   CURL:
+   curl -X GET "http://localhost:5000/api/v1/vendors/nearby?lat=40.7128&lng=-74.0060&radius_km=5"
+   
+   QUERY PARAMETERS:
+   - lat: number (required) - Latitude
+   - lng: number (required) - Longitude
+   - radius_km: number (optional, default: 10) - Search radius in kilometers
+   
+   EXAMPLES:
+   curl -X GET "http://localhost:5000/api/v1/vendors/nearby?lat=40.7128&lng=-74.0060"
+   curl -X GET "http://localhost:5000/api/v1/vendors/nearby?lat=40.7128&lng=-74.0060&radius_km=5"
+   
+   SUCCESS RESPONSE:
+   {
+     "status": true,
+     "data": [
+       {
+         "id": "c061b496-cb12-45d1-9f90-29e882a36876",
+         "name": "Pizza Palace Updated",
+         "image": "https://example.com/pizza-palace.jpg",
+         "about": "Updated description - Best pizza in town with fresh ingredients and fast delivery",
+         "work_time": {
+           "fri": "09:00-23:00",
+           "mon": "09:00-22:00",
+           "sat": "10:00-23:00",
+           "sun": "10:00-21:00",
+           "thu": "09:00-22:00",
+           "tue": "09:00-22:00",
+           "wed": "09:00-22:00"
+         },
+         "location": {
+           "lat": 40.7128,
+           "lng": -74.006,
+           "city": "New York"
+         },
+         "is_active": true,
+         "rating": "4.50",
+         "created_at": "2025-09-08T13:54:26.152Z",
+         "distance": 0
+       }
+     ],
+     "message": "Nearby vendors retrieved successfully",
+     "count": 1
+   }
+   
+   ERROR RESPONSE (400):
+   {
+     "status": false,
+     "data": null,
+     "message": "Latitude and longitude are required",
+     "count": 0
+   }
+
+================================================================================
+🔐 PROTECTED ENDPOINTS (Requires JWT Token)
+================================================================================
+
+5. CREATE VENDOR (Admin Only)
+   URL: POST http://localhost:5000/api/v1/vendors
+   
+   HEADERS:
+   Content-Type: application/json
+   Authorization: Bearer YOUR_ACCESS_TOKEN
+   
+   CURL:
+   curl -X POST "http://localhost:5000/api/v1/vendors" \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+     -d '{
+       "name": "Pizza Palace",
+       "image": "https://example.com/pizza-palace.jpg",
+       "about": "Best pizza in town with fresh ingredients and fast delivery",
+       "work_time": {
+         "mon": "09:00-22:00",
+         "tue": "09:00-22:00",
+         "wed": "09:00-22:00",
+         "thu": "09:00-22:00",
+         "fri": "09:00-23:00",
+         "sat": "10:00-23:00",
+         "sun": "10:00-21:00"
+       },
+       "location": {
+         "lat": 40.7128,
+         "lng": -74.0060,
+         "city": "New York"
+       }
+     }'
+   
+   REQUEST BODY (Required Fields):
+   {
+     "name": "string (required, 1-255 characters)",
+     "image": "string (optional, valid URL)",
+     "about": "string (optional, max 2000 characters)",
+     "work_time": "object (optional, working hours)",
+     "location": "object (optional, lat/lng coordinates)",
+     "subscript_date": "string (optional, ISO 8601 date)"
+   }
+   
+   SUCCESS RESPONSE (201):
+   {
+     "status": true,
+     "data": {
+       "id": "c061b496-cb12-45d1-9f90-29e882a36876",
+       "name": "Pizza Palace",
+       "image": "https://example.com/pizza-palace.jpg",
+       "about": "Best pizza in town with fresh ingredients and fast delivery",
+       "work_time": {
+         "fri": "09:00-23:00",
+         "mon": "09:00-22:00",
+         "sat": "10:00-23:00",
+         "sun": "10:00-21:00",
+         "thu": "09:00-22:00",
+         "tue": "09:00-22:00",
+         "wed": "09:00-22:00"
+       },
+       "location": {
+         "lat": 40.7128,
+         "lng": -74.006,
+         "city": "New York"
+       },
+       "is_active": true,
+       "rating": "0.00",
+       "created_at": "2025-09-08T13:54:26.152Z"
+     },
+     "message": "Vendor created successfully",
+     "count": 1
+   }
+   
+   ERROR RESPONSES:
+   - 400: Validation errors
+   - 401: Unauthorized (missing/invalid token)
+   - 409: Vendor name already exists
+
+6. UPDATE VENDOR
+   URL: PUT http://localhost:5000/api/v1/vendors/{id}
+   
+   HEADERS:
+   Content-Type: application/json
+   Authorization: Bearer YOUR_ACCESS_TOKEN
+   
+   CURL:
+   curl -X PUT "http://localhost:5000/api/v1/vendors/c061b496-cb12-45d1-9f90-29e882a36876" \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+     -d '{
+       "name": "Pizza Palace Updated",
+       "about": "Updated description - Best pizza in town with fresh ingredients and fast delivery",
+       "rating": 4.5
+     }'
+   
+   REQUEST BODY (All fields optional):
+   {
+     "name": "string (1-255 characters)",
+     "image": "string (valid URL)",
+     "about": "string (max 2000 characters)",
+     "work_time": "object (working hours)",
+     "location": "object (lat/lng coordinates)",
+     "subscript_date": "string (ISO 8601 date)",
+     "is_active": "boolean",
+     "rating": "number (0-5)"
+   }
+   
+   SUCCESS RESPONSE (200):
+   {
+     "status": true,
+     "data": {
+       "id": "c061b496-cb12-45d1-9f90-29e882a36876",
+       "name": "Pizza Palace Updated",
+       "image": "https://example.com/pizza-palace.jpg",
+       "about": "Updated description - Best pizza in town with fresh ingredients and fast delivery",
+       "work_time": {
+         "fri": "09:00-23:00",
+         "mon": "09:00-22:00",
+         "sat": "10:00-23:00",
+         "sun": "10:00-21:00",
+         "thu": "09:00-22:00",
+         "tue": "09:00-22:00",
+         "wed": "09:00-22:00"
+       },
+       "location": {
+         "lat": 40.7128,
+         "lng": -74.006,
+         "city": "New York"
+       },
+       "is_active": true,
+       "rating": 4.5,
+       "created_at": "2025-09-08T13:54:26.152Z"
+     },
+     "message": "Vendor updated successfully",
+     "count": 1
+   }
+   
+   ERROR RESPONSES:
+   - 400: Validation errors
+   - 401: Unauthorized
+   - 404: Vendor not found
+   - 409: Vendor name already exists
+
+7. DELETE VENDOR (Admin Only)
+   URL: DELETE http://localhost:5000/api/v1/vendors/{id}
+   
+   HEADERS:
+   Authorization: Bearer YOUR_ACCESS_TOKEN
+   
+   CURL:
+   curl -X DELETE "http://localhost:5000/api/v1/vendors/c061b496-cb12-45d1-9f90-29e882a36876" \
+     -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+   
+   SUCCESS RESPONSE (200):
+   {
+     "status": true,
+     "data": null,
+     "message": "Vendor deactivated successfully",
+     "count": 0
+   }
+   
+   ERROR RESPONSES:
+   - 401: Unauthorized
+   - 404: Vendor not found
+
+8. BLOCK VENDOR (Admin Only)
+   URL: POST http://localhost:5000/api/v1/vendors/{id}/block
+   
+   HEADERS:
+   Content-Type: application/json
+   Authorization: Bearer YOUR_ACCESS_TOKEN
+   
+   CURL:
+   curl -X POST "http://localhost:5000/api/v1/vendors/c061b496-cb12-45d1-9f90-29e882a36876/block" \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+     -d '{
+       "reason": "Violation of platform policies"
+     }'
+   
+   SUCCESS RESPONSE (200):
+   {
+     "status": true,
+     "data": null,
+     "message": "Vendor blocked successfully: Violation of platform policies",
+     "count": 0
+   }
+   
+   ERROR RESPONSES:
+   - 401: Unauthorized
+   - 404: Vendor not found
+
+9. GET EXPIRED SUBSCRIPTION VENDORS (Admin Only)
+   URL: GET http://localhost:5000/api/v1/vendors/expired-subscription
+   
+   HEADERS:
+   Authorization: Bearer YOUR_ACCESS_TOKEN
+   
+   CURL:
+   curl -X GET "http://localhost:5000/api/v1/vendors/expired-subscription?page=1&limit=10" \
+     -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+   
+   QUERY PARAMETERS:
+   - page: number (default: 1)
+   - limit: number (default: 10)
+   
+   SUCCESS RESPONSE (200):
+   {
+     "status": true,
+     "data": [
+       {
+         "id": "vendor-uuid-123",
+         "name": "Pizza Palace",
+         "image": "https://example.com/pizza-palace.jpg",
+         "about": "Best pizza in town with fresh ingredients",
+         "work_time": {
+           "mon": "09:00-22:00",
+           "tue": "09:00-22:00",
+           "wed": "09:00-22:00",
+           "thu": "09:00-22:00",
+           "fri": "09:00-23:00",
+           "sat": "10:00-23:00",
+           "sun": "10:00-21:00"
+         },
+         "location": {
+           "lat": 40.7128,
+           "lng": -74.0060,
+           "city": "New York"
+         },
+         "is_active": true,
+         "rating": "4.50",
+         "created_at": "2025-01-01T00:00:00.000Z",
+         "subscription_expired": true,
+         "subscript_date": "2024-01-01T00:00:00.000Z"
+       }
+     ],
+     "message": "Expired subscription vendors retrieved successfully",
+     "count": 1
+   }
+
+================================================================================
+🔑 HOW TO GET ACCESS TOKEN
+================================================================================
+
+1. LOGIN TO GET TOKEN:
+   curl -X POST "http://localhost:5000/api/v1/auth/login" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "email": "test999@example.com",
+       "password_hash": "TestPass123"
+     }'
+   
+   RESPONSE:
+   {
+     "status": true,
+     "data": {
+       "user": { ... },
+       "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+       "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+     },
+     "message": "Login successful",
+     "count": 1
+   }
+   
+2. USE TOKEN IN PROTECTED ENDPOINTS:
+   Replace "YOUR_ACCESS_TOKEN" with the actual token from login response
+
+================================================================================
+📝 VALIDATION RULES
+================================================================================
+
+CREATE VENDOR:
+- name: Required, string, 1-255 characters, unique
+- image: Optional, string, valid URL format
+- about: Optional, string, max 2000 characters
+- work_time: Optional, object with valid day-time format
+- location: Optional, object with valid lat/lng coordinates
+- subscript_date: Optional, valid ISO 8601 date
+
+UPDATE VENDOR:
+- name: Optional, string, 1-255 characters, unique (excluding current vendor)
+- image: Optional, string, valid URL format
+- about: Optional, string, max 2000 characters
+- work_time: Optional, object with valid day-time format
+- location: Optional, object with valid lat/lng coordinates
+- subscript_date: Optional, valid ISO 8601 date
+- is_active: Optional, boolean
+- rating: Optional, decimal between 0 and 5
+
+WORK TIME FORMAT:
+{
+  "mon": "09:00-22:00",
+  "tue": "09:00-22:00",
+  "wed": "09:00-22:00",
+  "thu": "09:00-22:00",
+  "fri": "09:00-23:00",
+  "sat": "10:00-23:00",
+  "sun": "10:00-21:00"
+}
+
+LOCATION FORMAT:
+{
+  "lat": 40.7128,
+  "lng": -74.0060,
+  "city": "New York"
+}
+
+================================================================================
+🚨 ERROR RESPONSES
+================================================================================
+
+VALIDATION ERROR (400):
+{
+  "status": false,
+  "data": null,
+  "message": "Validation failed",
+  "errors": [
+    {
+      "field": "name",
+      "message": "Vendor name is required"
+    },
+    {
+      "field": "work_time.mon",
+      "message": "Invalid time format for mon: 25:00-26:00. Use format HH:MM-HH:MM"
+    }
+  ],
+  "count": 2
+}
+
+UNAUTHORIZED (401):
+{
+  "status": false,
+  "data": null,
+  "message": "Access token is required",
+  "count": 0
+}
+
+NOT FOUND (404):
+{
+  "status": false,
+  "data": null,
+  "message": "Vendor not found",
+  "count": 0
+}
+
+CONFLICT (409):
+{
+  "status": false,
+  "data": null,
+  "message": "Vendor name already exists",
+  "count": 0
+}
+
+================================================================================
+🎯 QUICK TEST COMMANDS
+================================================================================
+
+# Test Public Endpoints (No Token Required)
+curl -X GET "http://localhost:5000/api/v1/vendors"
+curl -X GET "http://localhost:5000/api/v1/vendors?search=pizza"
+curl -X GET "http://localhost:5000/api/v1/vendors/popular?limit=5"
+curl -X GET "http://localhost:5000/api/v1/vendors/nearby?lat=40.7128&lng=-74.0060&radius_km=5"
+curl -X GET "http://localhost:5000/api/v1/vendors/c061b496-cb12-45d1-9f90-29e882a36876"
+
+# Test Protected Endpoints (Token Required)
+# First get token
+curl -X POST "http://localhost:5000/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test999@example.com", "password_hash": "TestPass123"}'
+
+# Then use token for protected operations
+curl -X POST "http://localhost:5000/api/v1/vendors" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -d '{"name": "Test Vendor", "about": "Test description"}'
+
+================================================================================
+📊 RESPONSE FORMAT STANDARD
+================================================================================
+
+All API responses follow this format:
+{
+  "status": boolean,      // true for success, false for error
+  "data": dynamic,        // response data or null
+  "message": string,      // success/error message
+  "count": number         // number of items returned
+}
+
+================================================================================
+🔍 SEARCH AND FILTERING
+================================================================================
+
+SEARCH:
+- Parameter: ?search=keyword
+- Searches vendor names and descriptions (case-insensitive)
+- Uses ILIKE for partial matching
+
+FILTERING:
+- min_rating: Filter by minimum rating (e.g., ?min_rating=4.0)
+- location: Filter by proximity (e.g., ?location=40.7128,-74.0060,5)
+- free_delivery: Filter by free delivery (e.g., ?free_delivery=true)
+- has_offer: Filter by active offers (e.g., ?has_offer=true)
+
+SORTING:
+- rating: Sort by rating (highest first)
+- delivery_fee: Sort by delivery fee
+- min_order: Sort by minimum order amount
+- delivery_time: Sort by delivery time
+- distance: Sort by distance (nearest first) - requires location
+- offers_count: Sort by number of offers
+- id: Sort by creation date (newest first)
+
+PAGINATION:
+- Parameters: ?page=number&limit=number
+- Page starts from 1
+- Default limit: 10, Maximum: 100
+- Vendors ordered by created_at DESC (newest first)
+
+EXAMPLES:
+- Get first 5 vendors: ?page=1&limit=5
+- Search pizza: ?search=pizza
+- Filter by rating: ?min_rating=4.0
+- Combine filters: ?page=1&limit=5&search=pizza&min_rating=4.0&sort=rating
+
+================================================================================
+📋 POSTMAN COLLECTION VARIABLES
+================================================================================
+
+BASE_URL: http://localhost:5000
+API_VERSION: /api/v1
+VENDORS_ENDPOINT: {{BASE_URL}}{{API_VERSION}}/vendors
+AUTH_TOKEN: (set after login)
+
+================================================================================
