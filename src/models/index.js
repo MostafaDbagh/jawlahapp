@@ -6,6 +6,13 @@ const Permission = require('./Permission');
 const Session = require('./Session');
 const Category = require('./Category');
 const Vendor = require('./Vendor');
+const Branch = require('./Branch');
+const Subcategory = require('./Subcategory');
+const Product = require('./Product');
+const ProductVariation = require('./ProductVariation');
+const Review = require('./Review');
+const Offer = require('./Offer');
+const Promotion = require('./Promotion');
 
 // Define associations
 User.belongsTo(AccountType, {
@@ -85,20 +92,39 @@ Role.hasMany(Role, {
   as: 'childRoles'
 });
 
-// User-Permission direct relationship (many-to-many through user_permissions)
-User.belongsToMany(Permission, {
-  through: 'user_permissions',
-  foreignKey: 'user_id',
-  otherKey: 'permission_id',
-  as: 'directPermissions'
-});
+// Vendor-Branch associations
+Vendor.hasMany(Branch, { foreignKey: 'vendor_id', as: 'branches' });
+Branch.belongsTo(Vendor, { foreignKey: 'vendor_id', as: 'vendor' });
 
-Permission.belongsToMany(User, {
-  through: 'user_permissions',
-  foreignKey: 'permission_id',
-  otherKey: 'user_id',
-  as: 'usersWithDirectPermissions'
-});
+// Branch-Subcategory associations
+Branch.hasMany(Subcategory, { foreignKey: 'branch_id', as: 'subcategories' });
+Subcategory.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+
+// Branch-Product associations
+Branch.hasMany(Product, { foreignKey: 'branch_id', as: 'products' });
+Product.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+
+// Branch-Review associations
+Branch.hasMany(Review, { foreignKey: 'branch_id', as: 'reviews' });
+Review.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+
+// Category-Subcategory associations
+Category.hasMany(Subcategory, { foreignKey: 'category_id', as: 'subcategories' });
+Subcategory.belongsTo(Category, { foreignKey: 'category_id', as: 'category' });
+
+// Product-ProductVariation associations
+Product.hasMany(ProductVariation, { foreignKey: 'product_id', as: 'variations' });
+ProductVariation.belongsTo(Product, { foreignKey: 'product_id', as: 'product' });
+
+// Product-Subcategory associations
+Product.belongsTo(Subcategory, { foreignKey: 'subcategory_id', as: 'subcategory' });
+Subcategory.hasMany(Product, { foreignKey: 'subcategory_id', as: 'products' });
+
+// Offer associations (polymorphic)
+Offer.belongsTo(Vendor, { foreignKey: 'entity_id', constraints: false, scope: { entity_type: 'vendor' } });
+Offer.belongsTo(Branch, { foreignKey: 'entity_id', constraints: false, scope: { entity_type: 'branch' } });
+Offer.belongsTo(Subcategory, { foreignKey: 'entity_id', constraints: false, scope: { entity_type: 'subcategory' } });
+Offer.belongsTo(Product, { foreignKey: 'entity_id', constraints: false, scope: { entity_type: 'product' } });
 
 module.exports = {
   User,
@@ -108,5 +134,12 @@ module.exports = {
   Permission,
   Session,
   Category,
-  Vendor
+  Vendor,
+  Branch,
+  Subcategory,
+  Product,
+  ProductVariation,
+  Review,
+  Offer,
+  Promotion
 };
