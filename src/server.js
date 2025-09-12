@@ -12,10 +12,18 @@ const PORT = process.env.PORT || 5000;
 // Start server function
 const startServer = async () => {
   try {
+    console.log('🚀 Starting server...');
+    console.log('🔧 Environment check:');
+    console.log('- NODE_ENV:', process.env.NODE_ENV);
+    console.log('- DATABASE_URL exists:', !!process.env.DATABASE_URL);
+    console.log('- JWT_SECRET exists:', !!process.env.JWT_SECRET);
+    
     // Connect to database
+    console.log('📡 Connecting to database...');
     await connectDB();
     
     // Initialize database schema
+    console.log('🗄️ Initializing database...');
     await initDatabase();
     
     // Start server
@@ -53,7 +61,9 @@ const startServer = async () => {
     }, 60 * 60 * 1000); // 1 hour
 
   } catch (error) {
-    console.error('Failed to start server:', error);
+    console.error('❌ Failed to start server:', error);
+    console.error('Error details:', error.message);
+    console.error('Stack trace:', error.stack);
     process.exit(1);
   }
 };

@@ -1,0 +1,9 @@
+# Don't ignore node_modules - we need them for production
+# node_modules/
+
+# Ignore development files
+.env.local
+.env.development
+*.log
+.DS_Store
+

@@ -1,6 +1,9 @@
 const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
+// Disable native PostgreSQL bindings for serverless environments
+process.env.PG_NATIVE = 'false';
+
 // Database configuration for Vercel
 let sequelize;
 
@@ -20,7 +23,8 @@ if (process.env.DATABASE_URL) {
         require: true,
         rejectUnauthorized: false
       } : false
-    }
+    },
+    native: false // Disable native bindings
   });
 } else {
   // Local development with individual environment variables
@@ -37,7 +41,8 @@ if (process.env.DATABASE_URL) {
       min: 0,
       acquire: 30000,
       idle: 10000
-    }
+    },
+    native: false // Disable native bindings
   });
 }
 
