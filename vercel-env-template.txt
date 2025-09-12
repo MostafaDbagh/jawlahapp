@@ -1,0 +1,40 @@
+# Vercel PostgreSQL Environment Variables
+# Copy these to your Vercel project settings → Environment Variables
+
+# Primary database URL (recommended for most uses)
+DATABASE_URL=postgresql://username:password@host:port/database?sslmode=require
+
+# For uses requiring a connection without pgbouncer
+DATABASE_URL_UNPOOLED=postgresql://username:password@host:port/database?sslmode=require
+
+# Individual connection parameters
+PGHOST=your-host
+PGHOST_UNPOOLED=your-host
+PGUSER=your-username
+PGDATABASE=your-database-name
+PGPASSWORD=your-password
+
+# Vercel Postgres specific variables
+POSTGRES_URL=postgresql://username:password@host:port/database?sslmode=require
+POSTGRES_URL_NON_POOLING=postgresql://username:password@host:port/database?sslmode=require
+POSTGRES_USER=your-username
+POSTGRES_HOST=your-host
+POSTGRES_PASSWORD=your-password
+POSTGRES_DATABASE=your-database-name
+POSTGRES_URL_NO_SSL=postgresql://username:password@host:port/database
+POSTGRES_PRISMA_URL=postgresql://username:password@host:port/database?sslmode=require&pgbouncer=true&connect_timeout=15
+
+# Application Environment Variables
+NODE_ENV=production
+JWT_SECRET=your-super-secret-jwt-key-here
+JWT_REFRESH_SECRET=your-super-secret-refresh-key-here
+
+# Email Configuration (if using email features)
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USER=your-email@gmail.com
+EMAIL_PASS=your-app-password
+EMAIL_FROM=noreply@yourdomain.com
+
+# CORS Configuration
+ALLOWED_ORIGINS=https://your-frontend-domain.com,https://your-app.vercel.app
