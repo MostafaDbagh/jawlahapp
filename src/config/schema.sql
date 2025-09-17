@@ -26,7 +26,10 @@ CREATE TABLE users (
     user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username VARCHAR(50) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
-    phone_number VARCHAR(20) UNIQUE NOT NULL,
+    country_code VARCHAR(5) NOT NULL,
+    phone_number VARCHAR(15) NOT NULL,
+    date_of_birth DATE,
+    gender VARCHAR(10) CHECK (gender IN ('male', 'female', 'other', 'prefer_not_to_say')),
     password_hash VARCHAR(255) NOT NULL,
     salt VARCHAR(255) NOT NULL,
     profile_image VARCHAR(500),
@@ -46,13 +49,16 @@ CREATE TABLE users (
     preferred_language VARCHAR(5) DEFAULT 'ar',
     timezone VARCHAR(50) DEFAULT 'Asia/Dubai',
     metadata JSONB,
-    FOREIGN KEY (account_type) REFERENCES account_types(type_code)
+    FOREIGN KEY (account_type) REFERENCES account_types(type_code),
+    UNIQUE(country_code, phone_number)
 );
 
 CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_phone ON users(phone_number);
+CREATE INDEX idx_users_phone ON users(country_code, phone_number);
 CREATE INDEX idx_users_account_type ON users(account_type);
 CREATE INDEX idx_users_active ON users(is_active);
+CREATE INDEX idx_users_gender ON users(gender);
+CREATE INDEX idx_users_dob ON users(date_of_birth);
 
 -- =============================================
 -- Modules Table
