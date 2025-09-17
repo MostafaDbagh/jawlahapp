@@ -1,10 +1,7 @@
 const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
-// Explicitly require pg to ensure it's available
-require('pg');
-
-// Disable native PostgreSQL bindings for serverless environments
+// Simple PostgreSQL configuration for Vercel
 process.env.PG_NATIVE = 'false';
 
 // Database configuration for Vercel

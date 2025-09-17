@@ -4,8 +4,16 @@ const { connectDB } = require('./config/database');
 const { initDatabase } = require('./config/initDb');
 const otpService = require('./utils/otpService');
 
-// Import models to establish relationships
-require('./models');
+// Import models to establish relationships - but don't fail if DB is not available
+let modelsLoaded = false;
+try {
+  require('./models');
+  modelsLoaded = true;
+  console.log('✅ Models loaded successfully');
+} catch (error) {
+  console.warn('⚠️ Models could not be loaded:', error.message);
+  console.log('🔄 Continuing without database models...');
+}
 
 const PORT = process.env.PORT || 5000;
 
@@ -18,13 +26,23 @@ const startServer = async () => {
     console.log('- DATABASE_URL exists:', !!process.env.DATABASE_URL);
     console.log('- JWT_SECRET exists:', !!process.env.JWT_SECRET);
     
-    // Connect to database
-    console.log('📡 Connecting to database...');
-    await connectDB();
-    
-    // Initialize database schema
-    console.log('🗄️ Initializing database...');
-    await initDatabase();
+    // Try to connect to database, but don't fail if it doesn't work
+    if (modelsLoaded) {
+      try {
+        console.log('📡 Connecting to database...');
+        await connectDB();
+        
+        // Initialize database schema
+        console.log('🗄️ Initializing database...');
+        await initDatabase();
+        console.log('✅ Database connected and initialized');
+      } catch (dbError) {
+        console.error('⚠️ Database connection failed:', dbError.message);
+        console.log('🔄 Starting server without database connection...');
+      }
+    } else {
+      console.log('🔄 Starting server without database connection (models not loaded)...');
+    }
     
     // Start server
     const server = app.listen(PORT, () => {

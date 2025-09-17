@@ -15,10 +15,35 @@ const validateRegistration = [
     .normalizeEmail()
     .withMessage('Please provide a valid email address'),
   
+  body('country_code')
+    .notEmpty()
+    .isLength({ min: 1, max: 5 })
+    .withMessage('Country code is required and must be between 1 and 5 characters')
+    .matches(/^\+?\d+$/)
+    .withMessage('Country code must contain only numbers and optional + prefix'),
+  
   body('phone_number')
+    .notEmpty()
+    .isLength({ min: 7, max: 15 })
+    .withMessage('Phone number is required and must be between 7 and 15 digits')
+    .matches(/^\d+$/)
+    .withMessage('Phone number must contain only numbers'),
+  
+  body('date_of_birth')
     .optional()
-    .isMobilePhone()
-    .withMessage('Please provide a valid phone number'),
+    .isISO8601()
+    .withMessage('Date of birth must be a valid date in YYYY-MM-DD format')
+    .custom((value) => {
+      if (value && new Date(value) >= new Date()) {
+        throw new Error('Date of birth must be in the past');
+      }
+      return true;
+    }),
+  
+  body('gender')
+    .optional()
+    .isIn(['male', 'female', 'other', 'prefer_not_to_say'])
+    .withMessage('Gender must be one of: male, female, other, prefer_not_to_say'),
   
   body('password_hash')
     .isLength({ min: 6 })
@@ -98,10 +123,35 @@ const validateProfileUpdate = [
     .matches(/^[a-zA-Z0-9_]+$/)
     .withMessage('Username can only contain letters, numbers, and underscores'),
   
+  body('country_code')
+    .optional()
+    .isLength({ min: 1, max: 5 })
+    .withMessage('Country code must be between 1 and 5 characters')
+    .matches(/^\+?\d+$/)
+    .withMessage('Country code must contain only numbers and optional + prefix'),
+  
   body('phone_number')
     .optional()
-    .isMobilePhone()
-    .withMessage('Please provide a valid phone number'),
+    .isLength({ min: 7, max: 15 })
+    .withMessage('Phone number must be between 7 and 15 digits')
+    .matches(/^\d+$/)
+    .withMessage('Phone number must contain only numbers'),
+  
+  body('date_of_birth')
+    .optional()
+    .isISO8601()
+    .withMessage('Date of birth must be a valid date in YYYY-MM-DD format')
+    .custom((value) => {
+      if (value && new Date(value) >= new Date()) {
+        throw new Error('Date of birth must be in the past');
+      }
+      return true;
+    }),
+  
+  body('gender')
+    .optional()
+    .isIn(['male', 'female', 'other', 'prefer_not_to_say'])
+    .withMessage('Gender must be one of: male, female, other, prefer_not_to_say'),
   
   body('profile_image')
     .optional()

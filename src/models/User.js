@@ -27,12 +27,33 @@ const User = sequelize.define('User', {
       isEmail: true
     }
   },
-  phone_number: {
-    type: DataTypes.STRING(20),
+  country_code: {
+    type: DataTypes.STRING(5),
     allowNull: false,
-    unique: true,
     validate: {
-      len: [10, 20]
+      len: [1, 5]
+    }
+  },
+  phone_number: {
+    type: DataTypes.STRING(15),
+    allowNull: false,
+    validate: {
+      len: [7, 15]
+    }
+  },
+  date_of_birth: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+    validate: {
+      isDate: true,
+      isBefore: new Date().toISOString().split('T')[0] // Must be before today
+    }
+  },
+  gender: {
+    type: DataTypes.STRING(10),
+    allowNull: true,
+    validate: {
+      isIn: [['male', 'female', 'other', 'prefer_not_to_say']]
     }
   },
   password_hash: {
@@ -112,6 +133,12 @@ const User = sequelize.define('User', {
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
+  indexes: [
+    {
+      unique: true,
+      fields: ['country_code', 'phone_number']
+    }
+  ],
   hooks: {
     // beforeCreate hook disabled to prevent double hashing
     // Password hashing is now handled in the controller

@@ -11,7 +11,16 @@ class AuthController {
   // User registration
   async register(req, res) {
     try {
-      const { username, email, phone_number, password_hash, account_type } = req.body;
+      const { 
+        username, 
+        email, 
+        country_code, 
+        phone_number, 
+        date_of_birth, 
+        gender, 
+        password_hash, 
+        account_type 
+      } = req.body;
 
       // Check if user already exists
       const existingUser = await User.findOne({
@@ -19,7 +28,12 @@ class AuthController {
           [Op.or]: [
             { email },
             { username },
-            { phone_number }
+            { 
+              [Op.and]: [
+                { country_code },
+                { phone_number }
+              ]
+            }
           ]
         }
       });
@@ -38,7 +52,10 @@ class AuthController {
       const user = await User.create({
         username,
         email,
+        country_code,
         phone_number,
+        date_of_birth,
+        gender,
         password_hash: hashedPassword,
         salt,
         account_type: account_type || 'CUSTOMER' // Default to customer
