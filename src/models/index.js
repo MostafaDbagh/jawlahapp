@@ -13,6 +13,7 @@ const ProductVariation = require('./ProductVariation');
 const Review = require('./Review');
 const Offer = require('./Offer');
 const Promotion = require('./Promotion');
+const Notification = require('./Notification');
 
 // Define associations
 User.belongsTo(AccountType, {
@@ -126,6 +127,18 @@ Offer.belongsTo(Branch, { foreignKey: 'entity_id', constraints: false, scope: { 
 Offer.belongsTo(Subcategory, { foreignKey: 'entity_id', constraints: false, scope: { entity_type: 'subcategory' } });
 Offer.belongsTo(Product, { foreignKey: 'entity_id', constraints: false, scope: { entity_type: 'product' } });
 
+// User-Notification associations
+User.hasMany(Notification, {
+  foreignKey: 'user_id',
+  as: 'notifications',
+  onDelete: 'CASCADE'
+});
+
+Notification.belongsTo(User, {
+  foreignKey: 'user_id',
+  as: 'user'
+});
+
 module.exports = {
   User,
   OTP,
@@ -141,5 +154,6 @@ module.exports = {
   ProductVariation,
   Review,
   Offer,
-  Promotion
+  Promotion,
+  Notification
 };

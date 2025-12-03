@@ -443,6 +443,189 @@ class AuthController {
       );
     }
   }
+
+  // Request OTP for phone login
+  async requestOTPLogin(req, res) {
+    try {
+      const { phone } = req.body;
+
+      // Validate phone number format (should include country code, e.g., +1234567890)
+      const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+      if (!phone || !phoneRegex.test(phone)) {
+        return res.status(400).json(
+          ResponseHelper.error('Invalid phone number format. Please include country code (e.g., +1234567890)', null, 0)
+        );
+      }
+
+      // Parse phone number: format is +[country_code][phone_number]
+      // We'll try to find user by matching phone_number (last 10 digits typically)
+      // and country_code separately
+      const cleanPhone = phone.replace(/^\+/, ''); // Remove leading +
+      const phoneNumber = cleanPhone.slice(-10); // Last 10 digits
+      const countryCode = cleanPhone.slice(0, -10) || '1'; // Everything before last 10 digits, default to 1
+
+      // Find user by country code and phone number
+      // Try both with and without + prefix
+      const user = await User.findOne({
+        where: {
+          [Op.or]: [
+            { country_code: `+${countryCode}`, phone_number: phoneNumber },
+            { country_code: countryCode, phone_number: phoneNumber }
+          ]
+        }
+      });
+
+      // If user doesn't exist, create a new user account
+      let userId;
+      if (!user) {
+        // Create a minimal user account for phone login
+        
+        // Generate a temporary username and email
+        const tempUsername = `user_${Date.now()}`;
+        const tempEmail = `temp_${Date.now()}@phone.login`;
+        
+        // Create user with minimal info
+        const newUser = await User.create({
+          username: tempUsername,
+          email: tempEmail,
+          country_code: `+${countryCode}`,
+          phone_number: phoneNumber,
+          password_hash: crypto.randomBytes(32).toString('hex'), // Temporary password
+          salt: crypto.randomBytes(32).toString('hex'),
+          account_type: 'CUSTOMER',
+          phone_verified: false // Will be verified after OTP confirmation
+        });
+        
+        userId = newUser.user_id;
+      } else {
+        userId = user.user_id;
+        
+        // Check if user is active
+        if (!user.is_active) {
+          return res.status(401).json(
+            ResponseHelper.error('Account is not active', null, 0)
+          );
+        }
+      }
+
+      // Generate and send OTP
+      const otpResult = await otpService.createAndSendOTP(
+        userId,
+        null, // No email for phone login
+        'phone_login',
+        phone
+      );
+
+      if (otpResult.success) {
+        res.json(
+          ResponseHelper.success(null, 'OTP sent successfully', 0)
+        );
+      } else {
+        res.status(500).json(
+          ResponseHelper.error('Failed to send OTP', otpResult.error, 0)
+        );
+      }
+    } catch (error) {
+      console.error('Request OTP login error:', error);
+      res.status(500).json(
+        ResponseHelper.error('Failed to request OTP', error.message, 0)
+      );
+    }
+  }
+
+  // Verify OTP and login
+  async verifyOTPLogin(req, res) {
+    try {
+      const { phone, otp } = req.body;
+
+      // Validate phone number format
+      const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+      if (!phone || !phoneRegex.test(phone)) {
+        return res.status(400).json(
+          ResponseHelper.error('Invalid phone number format', null, 0)
+        );
+      }
+
+      // Validate OTP format
+      if (!otp || !/^\d{6}$/.test(otp)) {
+        return res.status(400).json(
+          ResponseHelper.error('OTP must be a 6-digit number', null, 0)
+        );
+      }
+
+      // Parse phone number: format is +[country_code][phone_number]
+      const cleanPhone = phone.replace(/^\+/, ''); // Remove leading +
+      const phoneNumber = cleanPhone.slice(-10); // Last 10 digits
+      const countryCode = cleanPhone.slice(0, -10) || '1'; // Everything before last 10 digits, default to 1
+
+      // Find user by country code and phone number
+      // Try both with and without + prefix
+      const user = await User.findOne({
+        where: {
+          [Op.or]: [
+            { country_code: `+${countryCode}`, phone_number: phoneNumber },
+            { country_code: countryCode, phone_number: phoneNumber }
+          ]
+        }
+      });
+
+      if (!user) {
+        return res.status(404).json(
+          ResponseHelper.error('User not found', null, 0)
+        );
+      }
+
+      // Check if user is active
+      if (!user.is_active) {
+        return res.status(401).json(
+          ResponseHelper.error('Account is not active', null, 0)
+        );
+      }
+
+      // Verify OTP
+      const otpVerification = await otpService.verifyOTP(
+        user.user_id,
+        null, // No email for phone login
+        otp,
+        'phone_login',
+        phone
+      );
+
+      if (!otpVerification.success) {
+        return res.status(400).json(
+          ResponseHelper.error(otpVerification.message, null, 0)
+        );
+      }
+
+      // Mark phone as verified
+      if (!user.phone_verified) {
+        await user.update({ 
+          phone_verified: true,
+          is_verified: user.email_verified // Set is_verified if both email and phone are verified
+        });
+      }
+
+      // Update last login
+      await user.updateLastLogin();
+
+      // Generate JWT tokens with minimal claims (user ID only as per spec)
+      const accessToken = jwtService.generateAccessToken(user.user_id, user.email);
+      const refreshToken = jwtService.generateRefreshToken(user.user_id, user.email);
+
+      res.json(
+        ResponseHelper.success({
+          user: user.getPublicProfile(),
+          accessToken,
+          refreshToken
+        }, 'Login successful', 1)
+      );
+    } catch (error) {
+      console.error('Verify OTP login error:', error);
+      res.status(500).json(
+        ResponseHelper.error('Login failed', error.message, 0)
+      );
+    }
+  }
 }
 
 module.exports = new AuthController();
