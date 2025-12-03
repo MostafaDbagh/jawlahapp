@@ -9,12 +9,17 @@ const {
   validatePasswordReset,
   validateOTPVerification,
   validateProfileUpdate,
+  validateRequestOTPLogin,
+  validateVerifyOTPLogin,
   handleValidationErrors
 } = require('../../middleware/validation');
+const { rateLimitOTPRequest } = require('../../middleware/rateLimiter');
 
 // Public routes (no authentication required)
 router.post('/register', validateRegistration, handleValidationErrors, authController.register);
 router.post('/login', validateLogin, handleValidationErrors, authController.login);
+router.post('/request-otp-login', validateRequestOTPLogin, handleValidationErrors, rateLimitOTPRequest, authController.requestOTPLogin);
+router.post('/verify-otp-login', validateVerifyOTPLogin, handleValidationErrors, authController.verifyOTPLogin);
 router.post('/request-password-reset', validatePasswordResetRequest, handleValidationErrors, authController.requestPasswordReset);
 router.post('/reset-password', validatePasswordReset, handleValidationErrors, authController.resetPassword);
 router.post('/verify-otp', validateOTPVerification, handleValidationErrors, authController.verifyOTP);

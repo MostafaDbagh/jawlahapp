@@ -413,6 +413,38 @@ const validateReviewUpdate = [
   handleValidationErrors
 ];
 
+// Phone login validation rules
+const validateRequestOTPLogin = [
+  body('phone')
+    .notEmpty()
+    .withMessage('Phone number is required')
+    .matches(/^\+?[1-9]\d{1,14}$/)
+    .withMessage('Invalid phone number format. Please include country code (e.g., +1234567890)')
+];
+
+const validateVerifyOTPLogin = [
+  body('phone')
+    .notEmpty()
+    .withMessage('Phone number is required')
+    .matches(/^\+?[1-9]\d{1,14}$/)
+    .withMessage('Invalid phone number format'),
+  body('otp')
+    .isLength({ min: 6, max: 6 })
+    .isNumeric()
+    .withMessage('OTP must be a 6-digit number')
+];
+
+// FCM token validation rules
+const validateFCMToken = [
+  body('fcm_token')
+    .notEmpty()
+    .withMessage('FCM token is required')
+    .isString()
+    .withMessage('FCM token must be a string')
+    .isLength({ min: 10 })
+    .withMessage('FCM token must be at least 10 characters')
+];
+
 // Offer validation rules
 const validateOfferCreate = [
   body('type').isIn(['percentage', 'fixed', 'buy_x_get_y']).withMessage('Valid offer type is required'),
@@ -441,6 +473,9 @@ module.exports = {
   validatePasswordReset,
   validateOTPVerification,
   validateProfileUpdate,
+  validateRequestOTPLogin,
+  validateVerifyOTPLogin,
+  validateFCMToken,
   validateCategoryCreate,
   validateCategoryUpdate,
   validateVendorCreate,

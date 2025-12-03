@@ -19,9 +19,16 @@ const OTP = sequelize.define('OTP', {
   },
   email: {
     type: DataTypes.STRING(255),
-    allowNull: false,
+    allowNull: true,
     validate: {
       isEmail: true
+    }
+  },
+  phone: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    validate: {
+      len: [10, 20]
     }
   },
   otp: {
@@ -32,7 +39,7 @@ const OTP = sequelize.define('OTP', {
     type: DataTypes.STRING(30),
     allowNull: false,
     validate: {
-      isIn: [['password_reset', 'email_verification', 'phone_verification']]
+      isIn: [['password_reset', 'email_verification', 'phone_verification', 'phone_login']]
     }
   },
   expires_at: {
@@ -60,6 +67,9 @@ const OTP = sequelize.define('OTP', {
     },
     {
       fields: ['email']
+    },
+    {
+      fields: ['phone']
     },
     {
       fields: ['expires_at']

@@ -127,6 +127,11 @@ const User = sequelize.define('User', {
   metadata: {
     type: DataTypes.JSONB,
     allowNull: true
+  },
+  fcm_token: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    field: 'fcm_token'
   }
 }, {
   tableName: 'users',

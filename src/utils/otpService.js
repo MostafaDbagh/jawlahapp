@@ -8,7 +8,7 @@ class OTPService {
   }
 
   // Create and send OTP
-  async createAndSendOTP(userId, email, type) {
+  async createAndSendOTP(userId, email, type, phone = null) {
     try {
       // Delete any existing unused OTPs for this user and type
       await OTP.destroy({
@@ -26,28 +26,48 @@ class OTPService {
       // Save OTP to database
       const otpRecord = await OTP.create({
         user_id: userId,
-        email,
+        email: email || null,
+        phone: phone || null,
         otp,
         type,
         expires_at: expiresAt
       });
 
-      // Send OTP via email
-      const emailResult = await emailService.sendOTP(email, otp, type);
-
-      if (emailResult.success) {
+      // Send OTP via email or SMS based on type
+      if (type === 'phone_login' && phone) {
+        // Simulate SMS delivery (in production, integrate with SMS gateway like Twilio)
+        console.log(`[SMS SIMULATION] OTP ${otp} sent to ${phone}`);
+        // In production, replace with actual SMS service:
+        // const smsResult = await smsService.sendOTP(phone, otp);
         return {
           success: true,
           message: 'OTP sent successfully',
           otpId: otpRecord.otp_id
         };
+      } else if (email) {
+        // Send OTP via email
+        const emailResult = await emailService.sendOTP(email, otp, type);
+
+        if (emailResult.success) {
+          return {
+            success: true,
+            message: 'OTP sent successfully',
+            otpId: otpRecord.otp_id
+          };
+        } else {
+          // If email fails, delete the OTP record
+          await otpRecord.destroy();
+          return {
+            success: false,
+            message: 'Failed to send OTP email',
+            error: emailResult.error
+          };
+        }
       } else {
-        // If email fails, delete the OTP record
-        await otpRecord.destroy();
         return {
           success: false,
-          message: 'Failed to send OTP email',
-          error: emailResult.error
+          message: 'Either email or phone must be provided',
+          error: 'MISSING_CONTACT_INFO'
         };
       }
     } catch (error) {
@@ -61,15 +81,22 @@ class OTPService {
   }
 
   // Verify OTP
-  async verifyOTP(userId, email, otp, type) {
+  async verifyOTP(userId, email, otp, type, phone = null) {
     try {
+      const whereClause = {
+        user_id: userId,
+        type,
+        is_used: false
+      };
+
+      if (type === 'phone_login' && phone) {
+        whereClause.phone = phone;
+      } else if (email) {
+        whereClause.email = email;
+      }
+
       const otpRecord = await OTP.findOne({
-        where: {
-          user_id: userId,
-          email,
-          type,
-          is_used: false
-        }
+        where: whereClause
       });
 
       if (!otpRecord) {
