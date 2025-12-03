@@ -1,9 +1,9 @@
 {
   "info": {
     "name": "Jwalah App API Collection",
-    "description": "Complete API collection for Jwalah App with authentication, categories, vendors, branches, products, reviews, and offers",
+    "description": "Complete API collection for Jwalah App with authentication, categories, vendors, branches, products, reviews, offers, phone login, FCM tokens, and notifications",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "version": "1.0.0"
+    "version": "2.0.0"
   },
   "variable": [
     {
@@ -19,6 +19,21 @@
     {
       "key": "refreshToken",
       "value": "",
+      "type": "string"
+    },
+    {
+      "key": "phone",
+      "value": "+1234567890",
+      "type": "string"
+    },
+    {
+      "key": "otp",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "fcmToken",
+      "value": "firebase-generated-token-string",
       "type": "string"
     }
   ],
@@ -243,6 +258,225 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "auth", "logout"]
             }
+          }
+        },
+        {
+          "name": "Request OTP for Phone Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+1234567890\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/request-otp-login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "request-otp-login"]
+            },
+            "description": "Request a 6-digit OTP for phone number login.\n\n**Features:**\n- Rate limiting: Maximum 3 requests per hour per phone number\n- OTP expiration: 5 minutes\n- SMS simulation: OTP is logged to console (ready for Twilio integration)\n- Auto-creates user account if doesn't exist\n\n**Request Body:**\n```json\n{\n  \"phone\": \"+1234567890\"\n}\n```\n\n**Response (200 OK):**\n```json\n{\n  \"success\": true,\n  \"message\": \"OTP sent successfully\",\n  \"data\": null,\n  \"count\": 0\n}\n```"
+          }
+        },
+        {
+          "name": "Verify OTP and Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.data && jsonData.data.accessToken) {",
+                  "        pm.collectionVariables.set('accessToken', jsonData.data.accessToken);",
+                  "        console.log('✅ Access token saved');",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+1234567890\",\n  \"otp\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/verify-otp-login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "verify-otp-login"]
+            },
+            "description": "Verify the OTP and complete phone number login.\n\n**Request Body:**\n```json\n{\n  \"phone\": \"+1234567890\",\n  \"otp\": \"123456\"\n}\n```\n\n**Response (200 OK):**\n```json\n{\n  \"success\": true,\n  \"message\": \"Login successful\",\n  \"data\": {\n    \"user\": {...},\n    \"accessToken\": \"jwt-token\",\n    \"refreshToken\": \"jwt-token\"\n  },\n  \"count\": 1\n}\n```"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Save FCM Token",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fcm_token\": \"firebase-generated-token-string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/fcm-token",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "users", "fcm-token"]
+            },
+            "description": "Save or update FCM (Firebase Cloud Messaging) token for push notifications.\n\n**Features:**\n- Requires authentication (JWT Bearer token)\n- Idempotent: Can be called multiple times with same or new token\n- Token is stored in user record\n\n**Request Body:**\n```json\n{\n  \"fcm_token\": \"firebase-generated-token-string\"\n}\n```\n\n**Response (200 OK):**\n```json\n{\n  \"success\": true,\n  \"message\": \"FCM token saved successfully\",\n  \"data\": null,\n  \"count\": 0\n}\n```"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "Get Notifications",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "notifications"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number (default: 1)"
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "description": "Items per page (default: 10, max: 50)"
+                },
+                {
+                  "key": "type",
+                  "value": "",
+                  "description": "Filter by type: order, system, offers, other (optional)",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get all notifications for the authenticated user with pagination.\n\n**Query Parameters:**\n- `page` (optional, default: 1) - Page number\n- `limit` (optional, default: 10, max: 50) - Items per page\n- `type` (optional) - Filter by type: `order`, `system`, `offers`, or `other`\n\n**Response (200 OK):**\n```json\n{\n  \"success\": true,\n  \"message\": \"Notifications retrieved successfully\",\n  \"data\": {\n    \"notifications\": [...],\n    \"pagination\": {\n      \"currentPage\": 1,\n      \"totalPages\": 5,\n      \"totalItems\": 50,\n      \"itemsPerPage\": 10\n    }\n  },\n  \"count\": 10\n}\n```"
+          }
+        },
+        {
+          "name": "Get Notifications by Type",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications?type=order",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "notifications"],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "order",
+                  "description": "Filter by type: order, system, offers, other"
+                }
+              ]
+            },
+            "description": "Get notifications filtered by type.\n\n**Valid Types:**\n- `order` - Order-related notifications\n- `system` - System notifications\n- `offers` - Offer/promotion notifications\n- `other` - Other notifications"
+          }
+        },
+        {
+          "name": "Mark Notification as Read",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications/:notificationId/mark-read",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "notifications", ":notificationId", "mark-read"],
+              "variable": [
+                {
+                  "key": "notificationId",
+                  "value": "",
+                  "description": "UUID of the notification"
+                }
+              ]
+            },
+            "description": "Mark a specific notification as read.\n\n**Path Parameter:**\n- `notificationId` - UUID of the notification\n\n**Response (200 OK):**\n```json\n{\n  \"success\": true,\n  \"message\": \"Notification marked as read\",\n  \"data\": {\n    \"notification\": {...}\n  },\n  \"count\": 1\n}\n```"
           }
         }
       ]
