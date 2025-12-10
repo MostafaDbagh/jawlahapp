@@ -14,6 +14,7 @@ class AuthController {
       const { 
         username, 
         email, 
+        full_name,
         country_code, 
         phone_number, 
         date_of_birth, 
@@ -52,6 +53,7 @@ class AuthController {
       const user = await User.create({
         username,
         email,
+        full_name,
         country_code,
         phone_number,
         date_of_birth,
@@ -358,10 +360,11 @@ class AuthController {
   // Update user profile
   async updateProfile(req, res) {
     try {
-      const { username, phone_number, profile_image, preferred_language, timezone } = req.body;
+      const { username, full_name, phone_number, profile_image, preferred_language, timezone } = req.body;
       const updateData = {};
 
       if (username) updateData.username = username;
+      if (full_name !== undefined) updateData.full_name = full_name;
       if (phone_number) updateData.phone_number = phone_number;
       if (profile_image) updateData.profile_image = profile_image;
       if (preferred_language) updateData.preferred_language = preferred_language;

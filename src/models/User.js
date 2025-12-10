@@ -27,6 +27,14 @@ const User = sequelize.define('User', {
       isEmail: true
     }
   },
+  full_name: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    validate: {
+      len: [2, 100],
+      is: /^[a-zA-Z\s'-]+$/ // Allows letters, spaces, hyphens, and apostrophes
+    }
+  },
   country_code: {
     type: DataTypes.STRING(5),
     allowNull: false,

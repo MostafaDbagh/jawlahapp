@@ -15,6 +15,14 @@ const validateRegistration = [
     .normalizeEmail()
     .withMessage('Please provide a valid email address'),
   
+  body('full_name')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Full name must be between 2 and 100 characters')
+    .matches(/^[a-zA-Z\s'-]+$/)
+    .withMessage('Full name can only contain letters, spaces, hyphens, and apostrophes'),
+  
   body('country_code')
     .notEmpty()
     .isLength({ min: 1, max: 5 })
@@ -166,7 +174,15 @@ const validateProfileUpdate = [
   body('timezone')
     .optional()
     .isLength({ min: 3, max: 50 })
-    .withMessage('Timezone must be between 3 and 50 characters')
+    .withMessage('Timezone must be between 3 and 50 characters'),
+  
+  body('full_name')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Full name must be between 2 and 100 characters')
+    .matches(/^[a-zA-Z\s'-]+$/)
+    .withMessage('Full name can only contain letters, spaces, hyphens, and apostrophes')
 ];
 
 // Validation rules for category creation
