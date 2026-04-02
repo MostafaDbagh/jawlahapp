@@ -461,6 +461,19 @@ const validateFCMToken = [
     .withMessage('FCM token must be at least 10 characters')
 ];
 
+/** Mobile app POST /api/v1/saveToken — body uses firebase_token (Flutter) or fcm_token */
+const validateFCMTokenCompat = [
+  body('fcm_token').optional().isString(),
+  body('firebase_token').optional().isString(),
+  body().custom((_, { req }) => {
+    const t = String(req.body.fcm_token || req.body.firebase_token || '').trim();
+    if (t.length < 10) {
+      throw new Error('Valid FCM token is required (fcm_token or firebase_token)');
+    }
+    return true;
+  })
+];
+
 // Offer validation rules
 const validateOfferCreate = [
   body('type').isIn(['percentage', 'fixed', 'buy_x_get_y']).withMessage('Valid offer type is required'),
@@ -492,6 +505,7 @@ module.exports = {
   validateRequestOTPLogin,
   validateVerifyOTPLogin,
   validateFCMToken,
+  validateFCMTokenCompat,
   validateCategoryCreate,
   validateCategoryUpdate,
   validateVendorCreate,

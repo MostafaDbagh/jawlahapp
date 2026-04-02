@@ -2,6 +2,12 @@ const express = require('express');
 const router = express.Router();
 const authRoutes = require('./auth/authRoutes');
 const userRoutes = require('./user/userRoutes');
+const userController = require('../controllers/userController');
+const { authenticateToken } = require('../middleware/auth');
+const {
+  validateFCMTokenCompat,
+  handleValidationErrors
+} = require('../middleware/validation');
 const categoryRoutes = require('./category/categoryRoutes');
 const vendorRoutes = require('./vendor/vendorRoutes');
 const branchRoutes = require('./branch/branchRoutes');
@@ -34,6 +40,15 @@ router.use('/api/v1/products', productRoutes);
 router.use('/api/v1/reviews', reviewRoutes);
 router.use('/api/v1/offers', offerRoutes);
 router.use('/api/v1/notifications', notificationRoutes);
+
+// Mobile app: POST /api/v1/saveToken (FCM / Firebase token + optional device info)
+router.post(
+  '/api/v1/saveToken',
+  authenticateToken,
+  validateFCMTokenCompat,
+  handleValidationErrors,
+  userController.saveFCMToken
+);
 
 // 404 handler for undefined routes
 router.use('*', (req, res) => {

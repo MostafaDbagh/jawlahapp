@@ -1,58 +1,107 @@
 /**
  * Standardized API Response Helper
  * Format: {status: boolean, data: dynamic, message: string, count: number}
+ *
+ * Supports two styles:
+ * - Legacy: build a plain object (used with res.json(ResponseHelper.success(...)))
+ * - Express: ResponseHelper.list(res, data, count, message) sends the response
  */
+
+function isExpressResponse(obj) {
+  return obj != null && typeof obj.status === 'function' && typeof obj.json === 'function';
+}
 
 class ResponseHelper {
   /**
-   * Success response
-   * @param {any} data - Response data
-   * @param {string} message - Success message
-   * @param {number} count - Number of items (optional)
-   * @returns {Object} Standardized response
+   * Success response (legacy object OR Express sender)
+   * Legacy: success(data, message, count?)
+   * Express: success(res, data, message)
    */
-  static success(data = null, message = 'Success', count = null) {
+  static success(first, second, third) {
+    if (isExpressResponse(first)) {
+      const res = first;
+      const data = second;
+      const message = third ?? 'Success';
+      const count =
+        data == null
+          ? 0
+          : Array.isArray(data)
+            ? data.length
+            : 1;
+      return res.status(200).json({
+        status: true,
+        data,
+        message,
+        count
+      });
+    }
+
     const response = {
       status: true,
-      data,
-      message
+      data: first,
+      message: second ?? 'Success'
     };
-
-    if (count !== null) {
-      response.count = count;
+    if (third !== null && third !== undefined) {
+      response.count = third;
     }
-
     return response;
   }
 
   /**
-   * Error response
-   * @param {string} message - Error message
-   * @param {any} data - Error data (optional)
-   * @param {number} count - Number of items (optional)
-   * @returns {Object} Standardized response
+   * Error response (legacy object OR Express sender)
+   * Legacy: error(message, data?, count?)
+   * Express: error(res, message, httpStatus?)
    */
-  static error(message = 'Error occurred', data = null, count = null) {
+  static error(first, second, third) {
+    if (isExpressResponse(first)) {
+      const res = first;
+      const message = second ?? 'Error occurred';
+      const statusCode = typeof third === 'number' ? third : 500;
+      return res.status(statusCode).json({
+        status: false,
+        data: null,
+        message,
+        count: 0
+      });
+    }
+
     const response = {
       status: false,
-      data,
-      message
+      data: second ?? null,
+      message: first ?? 'Error occurred'
     };
-
-    if (count !== null) {
-      response.count = count;
+    if (third !== null && third !== undefined) {
+      response.count = third;
     }
-
     return response;
   }
 
   /**
-   * List response with count
-   * @param {Array} data - Array of items
-   * @param {string} message - Success message
-   * @returns {Object} Standardized response with count
+   * List response
+   * Legacy: list(data, message?) — plain object
+   * Express: list(res, data, count, message)
    */
-  static list(data = [], message = 'Data retrieved successfully') {
+  static list(first, second, third, fourth) {
+    if (isExpressResponse(first)) {
+      const res = first;
+      const data = second ?? [];
+      const count =
+        third !== undefined && third !== null
+          ? Number(third)
+          : Array.isArray(data)
+            ? data.length
+            : 0;
+      const message = fourth ?? 'Data retrieved successfully';
+      return res.status(200).json({
+        status: true,
+        data,
+        message,
+        count
+      });
+    }
+
+    const data = first ?? [];
+    const message = second ?? 'Data retrieved successfully';
     return {
       status: true,
       data,
@@ -63,23 +112,33 @@ class ResponseHelper {
 
   /**
    * Single item response
-   * @param {any} data - Single item
-   * @param {string} message - Success message
-   * @returns {Object} Standardized response
+   * Legacy: item(data, message?)
+   * Express: item(res, data, message, statusCode?)
    */
-  static item(data = null, message = 'Item retrieved successfully') {
+  static item(first, second, third, fourth) {
+    if (isExpressResponse(first)) {
+      const res = first;
+      const data = second;
+      const message = third ?? 'Item retrieved successfully';
+      const statusCode = typeof fourth === 'number' ? fourth : 200;
+      return res.status(statusCode).json({
+        status: true,
+        data,
+        message,
+        count: data != null ? 1 : 0
+      });
+    }
+
     return {
       status: true,
-      data,
-      message,
-      count: data ? 1 : 0
+      data: first,
+      message: second ?? 'Item retrieved successfully',
+      count: first != null ? 1 : 0
     };
   }
 
   /**
-   * Empty response
-   * @param {string} message - Message
-   * @returns {Object} Standardized response
+   * Empty response (legacy only)
    */
   static empty(message = 'No data found') {
     return {
