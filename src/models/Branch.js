@@ -106,11 +106,13 @@ Branch.prototype.isOpen = function() {
   if (!this.work_time) return true;
   
   const now = new Date();
-  const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-  const currentDay = dayNames[now.getDay()];
+  const shortDays = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  const longDays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const idx = now.getDay();
   const currentTime = now.toTimeString().slice(0, 5);
   
-  const daySchedule = this.work_time[currentDay];
+  const daySchedule =
+    this.work_time[shortDays[idx]] || this.work_time[longDays[idx]];
   if (!daySchedule) return false;
   
   const [openTime, closeTime] = daySchedule.split('-');

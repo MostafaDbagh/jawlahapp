@@ -713,8 +713,8 @@ const seedDatabase = async () => {
         description: 'Get 20% discount on all orders over $30',
         type: 'percentage',
         value: 20.00,
-        start_date: new Date('2025-01-01'),
-        end_date: new Date('2025-12-31'),
+        start_date: new Date('2026-01-01'),
+        end_date: new Date('2027-12-31'),
         is_active: true
       },
       {
@@ -724,8 +724,8 @@ const seedDatabase = async () => {
         description: 'Buy 2 pizzas get 1 free',
         type: 'fixed',
         value: 15.99,
-        start_date: new Date('2025-01-01'),
-        end_date: new Date('2025-06-30'),
+        start_date: new Date('2026-01-01'),
+        end_date: new Date('2027-06-30'),
         is_active: true
       },
       {
@@ -735,8 +735,8 @@ const seedDatabase = async () => {
         description: 'Special price for Margherita Pizza',
         type: 'percentage',
         value: 15.00,
-        start_date: new Date('2025-01-01'),
-        end_date: new Date('2025-03-31'),
+        start_date: new Date('2026-01-01'),
+        end_date: new Date('2027-03-31'),
         is_active: true
       },
       {
@@ -746,8 +746,8 @@ const seedDatabase = async () => {
         description: 'Burger + Fries + Drink for $15',
         type: 'fixed',
         value: 5.00,
-        start_date: new Date('2025-01-01'),
-        end_date: new Date('2025-12-31'),
+        start_date: new Date('2026-01-01'),
+        end_date: new Date('2027-12-31'),
         is_active: true
       },
       {
@@ -757,8 +757,8 @@ const seedDatabase = async () => {
         description: '50% off coffee before 10 AM',
         type: 'percentage',
         value: 50.00,
-        start_date: new Date('2025-01-01'),
-        end_date: new Date('2025-12-31'),
+        start_date: new Date('2026-01-01'),
+        end_date: new Date('2027-12-31'),
         is_active: true
       },
       {
@@ -768,8 +768,8 @@ const seedDatabase = async () => {
         description: '3 rolls for the price of 2',
         type: 'fixed',
         value: 8.99,
-        start_date: new Date('2025-01-01'),
-        end_date: new Date('2025-04-30'),
+        start_date: new Date('2026-01-01'),
+        end_date: new Date('2027-04-30'),
         is_active: true
       }
     ]);

@@ -1,0 +1,863 @@
+{
+  "info": {
+    "name": "Jawlah App - Complete API Collection",
+    "description": "All APIs in one collection. Folders:\n\n**1. Public (No Authorization)** – No Bearer token needed.\n**2. Protected (Authorization Required)** – Use Bearer token (set accessToken after login).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000", "type": "string" },
+    { "key": "accessToken", "value": "", "type": "string" },
+    { "key": "refreshToken", "value": "", "type": "string" },
+    { "key": "phone", "value": "+1234567890", "type": "string" },
+    { "key": "otp", "value": "", "type": "string" },
+    { "key": "fcmToken", "value": "firebase-generated-token-string", "type": "string" },
+    { "key": "notificationId", "value": "", "type": "string" },
+    { "key": "categoryId", "value": "1", "type": "string" },
+    { "key": "vendorId", "value": "1", "type": "string" },
+    { "key": "branchId", "value": "1", "type": "string" },
+    { "key": "subcategoryId", "value": "1", "type": "string" },
+    { "key": "productId", "value": "1", "type": "string" },
+    { "key": "reviewId", "value": "1", "type": "string" },
+    { "key": "offerId", "value": "1", "type": "string" },
+    { "key": "variationId", "value": "1", "type": "string" },
+    { "key": "userId", "value": "1", "type": "string" }
+  ],
+  "auth": { "type": "noauth" },
+  "item": [
+    {
+      "name": "1. Public (No Authorization)",
+      "description": "These endpoints do NOT require Authorization header. Use them without a token.",
+      "item": [
+        {
+          "name": "Health",
+          "item": [
+            {
+              "name": "Health Check",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Auth (Public)",
+          "item": [
+            {
+              "name": "Register",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"username\": \"testuser\",\n  \"email\": \"test@example.com\",\n  \"country_code\": \"+971\",\n  \"phone_number\": \"501234567\",\n  \"date_of_birth\": \"1990-01-15\",\n  \"gender\": \"male\",\n  \"password_hash\": \"Password123\",\n  \"account_type\": \"CUSTOMER\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/auth/register", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "register"] }
+              }
+            },
+            {
+              "name": "Login",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"test@example.com\",\n  \"password_hash\": \"password123\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "login"] }
+              }
+            },
+            {
+              "name": "Request OTP for Phone Login",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"phone\": \"{{phone}}\"\n}" },
+                "url": { "raw": "{{baseUrl}}/api/v1/auth/request-otp-login", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "request-otp-login"] }
+              }
+            },
+            {
+              "name": "Verify OTP and Login",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"phone\": \"{{phone}}\",\n  \"otp\": \"{{otp}}\"\n}" },
+                "url": { "raw": "{{baseUrl}}/api/v1/auth/verify-otp-login", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "verify-otp-login"] }
+              }
+            },
+            {
+              "name": "Request Password Reset",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"email\": \"test@example.com\"\n}" },
+                "url": { "raw": "{{baseUrl}}/api/v1/auth/request-password-reset", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "request-password-reset"] }
+              }
+            },
+            {
+              "name": "Reset Password",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"email\": \"test@example.com\",\n  \"otp_code\": \"123456\",\n  \"new_password\": \"newpassword123\"\n}" },
+                "url": { "raw": "{{baseUrl}}/api/v1/auth/reset-password", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "reset-password"] }
+              }
+            },
+            {
+              "name": "Verify OTP",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"email\": \"test@example.com\",\n  \"otp_code\": \"123456\"\n}" },
+                "url": { "raw": "{{baseUrl}}/api/v1/auth/verify-otp", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "verify-otp"] }
+              }
+            },
+            {
+              "name": "Resend OTP",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"email\": \"test@example.com\"\n}" },
+                "url": { "raw": "{{baseUrl}}/api/v1/auth/resend-otp", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "resend-otp"] }
+              }
+            },
+            {
+              "name": "Refresh Token",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"refresh_token\": \"{{refreshToken}}\"\n}" },
+                "url": { "raw": "{{baseUrl}}/api/v1/auth/refresh-token", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "refresh-token"] }
+              }
+            },
+            {
+              "name": "Verify Email",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"email\": \"test@example.com\",\n  \"otp_code\": \"123456\"\n}" },
+                "url": { "raw": "{{baseUrl}}/api/v1/auth/verify-email", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "verify-email"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Categories (Public)",
+          "item": [
+            {
+              "name": "Get All Categories",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/categories?page=1&limit=20",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "categories"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "limit", "value": "20" },
+                    { "key": "search", "value": "", "disabled": true }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Category by ID",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/categories/{{categoryId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "categories", "{{categoryId}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Vendors (Public)",
+          "item": [
+            {
+              "name": "Get All Vendors",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/vendors", "host": ["{{baseUrl}}"], "path": ["api", "v1", "vendors"] }
+              }
+            },
+            {
+              "name": "Get Popular Vendors",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/vendors/popular", "host": ["{{baseUrl}}"], "path": ["api", "v1", "vendors", "popular"] }
+              }
+            },
+            {
+              "name": "Get Expired Subscriptions",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/vendors/expired-subscriptions", "host": ["{{baseUrl}}"], "path": ["api", "v1", "vendors", "expired-subscriptions"] }
+              }
+            },
+            {
+              "name": "Get Vendor by ID",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/vendors/{{vendorId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "vendors", "{{vendorId}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Branches (Public)",
+          "item": [
+            {
+              "name": "Get All Branches",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/branches", "host": ["{{baseUrl}}"], "path": ["api", "v1", "branches"] }
+              }
+            },
+            {
+              "name": "Get Nearby Branches",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/branches/nearby?latitude=40.7128&longitude=-74.0060&radius=10",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "branches", "nearby"],
+                  "query": [
+                    { "key": "latitude", "value": "40.7128" },
+                    { "key": "longitude", "value": "-74.0060" },
+                    { "key": "radius", "value": "10" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Popular Branches",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/branches/popular", "host": ["{{baseUrl}}"], "path": ["api", "v1", "branches", "popular"] }
+              }
+            },
+            {
+              "name": "Get Branch by ID",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/branches/{{branchId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "branches", "{{branchId}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Subcategories (Public)",
+          "item": [
+            {
+              "name": "Search Subcategories",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/subcategories/search?q=electronics",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "subcategories", "search"],
+                  "query": [{ "key": "q", "value": "electronics" }]
+                }
+              }
+            },
+            {
+              "name": "Get Branch Subcategories",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/subcategories/branches/{{branchId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "subcategories", "branches", "{{branchId}}"] }
+              }
+            },
+            {
+              "name": "Get Subcategory by ID",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/subcategories/branches/{{branchId}}/{{subcategoryId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "subcategories", "branches", "{{branchId}}", "{{subcategoryId}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Products (Public)",
+          "item": [
+            {
+              "name": "Get Product by ID",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/products/{{productId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "products", "{{productId}}"] }
+              }
+            },
+            {
+              "name": "Get Branch Products",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/products/branches/{{branchId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "products", "branches", "{{branchId}}"] }
+              }
+            },
+            {
+              "name": "Get Subcategory Products",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/products/branches/{{branchId}}/subcategories/{{subcategoryId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "products", "branches", "{{branchId}}", "subcategories", "{{subcategoryId}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reviews (Public)",
+          "item": [
+            {
+              "name": "Get Branch Reviews",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/reviews/branches/{{branchId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "reviews", "branches", "{{branchId}}"] }
+              }
+            },
+            {
+              "name": "Get Branch Review Stats",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/reviews/branches/{{branchId}}/stats", "host": ["{{baseUrl}}"], "path": ["api", "v1", "reviews", "branches", "{{branchId}}", "stats"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Offers (Public)",
+          "item": [
+            {
+              "name": "Get Active Offers",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/offers/active", "host": ["{{baseUrl}}"], "path": ["api", "v1", "offers", "active"] }
+              }
+            },
+            {
+              "name": "Get Expired Offers",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/offers/expired", "host": ["{{baseUrl}}"], "path": ["api", "v1", "offers", "expired"] }
+              }
+            },
+            {
+              "name": "Get Offer by ID",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/offers/{{offerId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "offers", "{{offerId}}"] }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Protected (Authorization Required)",
+      "description": "These endpoints require Authorization: Bearer <token>. Set accessToken (e.g. from Login or Verify OTP and Login) in collection variables.",
+      "item": [
+        {
+          "name": "Auth (Protected)",
+          "item": [
+            {
+              "name": "Get Profile",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/auth/profile", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "profile"] }
+              }
+            },
+            {
+              "name": "Update Profile",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"username\": \"updateduser\",\n  \"full_name\": \"John Doe\",\n  \"phone_number\": \"509876543\",\n  \"profile_image\": \"https://example.com/avatar.jpg\",\n  \"preferred_language\": \"en\",\n  \"timezone\": \"UTC\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/auth/profile", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "profile"] }
+              }
+            },
+            {
+              "name": "Logout",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "POST",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/auth/logout", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "logout"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Users",
+          "item": [
+            {
+              "name": "Save FCM Token",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"fcm_token\": \"{{fcmToken}}\"\n}" },
+                "url": { "raw": "{{baseUrl}}/api/v1/users/fcm-token", "host": ["{{baseUrl}}"], "path": ["api", "v1", "users", "fcm-token"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Notifications",
+          "item": [
+            {
+              "name": "Get Notifications",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/notifications?page=1&limit=10",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "notifications"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "limit", "value": "10" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Mark Notification as Read",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "PATCH",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/notifications/{{notificationId}}/mark-read", "host": ["{{baseUrl}}"], "path": ["api", "v1", "notifications", "{{notificationId}}", "mark-read"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Categories (Protected)",
+          "item": [
+            {
+              "name": "Create Category",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Electronics\",\n  \"description\": \"Electronic devices and accessories\",\n  \"image_url\": \"https://example.com/electronics.jpg\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/categories", "host": ["{{baseUrl}}"], "path": ["api", "v1", "categories"] }
+              }
+            },
+            {
+              "name": "Update Category",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Updated Electronics\",\n  \"description\": \"Updated description\",\n  \"image_url\": \"https://example.com/updated.jpg\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/categories/{{categoryId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "categories", "{{categoryId}}"] }
+              }
+            },
+            {
+              "name": "Delete Category",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "DELETE",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/categories/{{categoryId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "categories", "{{categoryId}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Vendors (Protected)",
+          "item": [
+            {
+              "name": "Create Vendor",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Tech Store\",\n  \"description\": \"Electronics store\",\n  \"email\": \"tech@example.com\",\n  \"phone\": \"1234567890\",\n  \"address\": \"123 Tech Street\",\n  \"city\": \"Tech City\",\n  \"state\": \"Tech State\",\n  \"country\": \"Tech Country\",\n  \"postal_code\": \"12345\",\n  \"website\": \"https://techstore.com\",\n  \"logo_url\": \"https://example.com/logo.jpg\",\n  \"subscription_type\": \"premium\",\n  \"subscription_status\": \"active\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/vendors", "host": ["{{baseUrl}}"], "path": ["api", "v1", "vendors"] }
+              }
+            },
+            {
+              "name": "Update Vendor",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Updated Tech Store\",\n  \"description\": \"Updated description\",\n  \"email\": \"updated@example.com\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/vendors/{{vendorId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "vendors", "{{vendorId}}"] }
+              }
+            },
+            {
+              "name": "Delete Vendor",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "DELETE",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/vendors/{{vendorId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "vendors", "{{vendorId}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Branches (Protected)",
+          "item": [
+            {
+              "name": "Get Vendor Branches",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/branches/vendor/{{vendorId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "branches", "vendor", "{{vendorId}}"] }
+              }
+            },
+            {
+              "name": "Create Branch",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Downtown Branch\",\n  \"address\": \"456 Downtown St\",\n  \"city\": \"Downtown City\",\n  \"state\": \"Downtown State\",\n  \"country\": \"Downtown Country\",\n  \"postal_code\": \"54321\",\n  \"phone\": \"0987654321\",\n  \"email\": \"downtown@example.com\",\n  \"latitude\": 40.7589,\n  \"longitude\": -73.9851,\n  \"is_active\": true,\n  \"opening_hours\": \"9:00 AM - 9:00 PM\",\n  \"vendor_id\": 1\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/branches/vendor/{{vendorId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "branches", "vendor", "{{vendorId}}"] }
+              }
+            },
+            {
+              "name": "Update Branch",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Updated Downtown Branch\",\n  \"address\": \"Updated Address\",\n  \"phone\": \"1111111111\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/branches/{{branchId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "branches", "{{branchId}}"] }
+              }
+            },
+            {
+              "name": "Activate Branch",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "POST",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/branches/{{branchId}}/activate", "host": ["{{baseUrl}}"], "path": ["api", "v1", "branches", "{{branchId}}", "activate"] }
+              }
+            },
+            {
+              "name": "Delete Branch",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "DELETE",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/branches/{{branchId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "branches", "{{branchId}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Subcategories (Protected)",
+          "item": [
+            {
+              "name": "Create Subcategory",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Smartphones\",\n  \"description\": \"Mobile phones and accessories\",\n  \"image_url\": \"https://example.com/smartphones.jpg\",\n  \"category_id\": 1\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/subcategories/branches/{{branchId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "subcategories", "branches", "{{branchId}}"] }
+              }
+            },
+            {
+              "name": "Update Subcategory",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Updated Smartphones\",\n  \"description\": \"Updated description\",\n  \"image_url\": \"https://example.com/updated.jpg\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/subcategories/branches/{{branchId}}/{{subcategoryId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "subcategories", "branches", "{{branchId}}", "{{subcategoryId}}"] }
+              }
+            },
+            {
+              "name": "Delete Subcategory",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "DELETE",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/subcategories/branches/{{branchId}}/{{subcategoryId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "subcategories", "branches", "{{branchId}}", "{{subcategoryId}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Products (Protected)",
+          "item": [
+            {
+              "name": "Create Product",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"iPhone 15\",\n  \"description\": \"Latest iPhone model\",\n  \"price\": 999.99,\n  \"stock_quantity\": 50,\n  \"sku\": \"IPH15-001\",\n  \"image_url\": \"https://example.com/iphone15.jpg\",\n  \"subcategory_id\": 1,\n  \"is_active\": true\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/products/branches/{{branchId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "products", "branches", "{{branchId}}"] }
+              }
+            },
+            {
+              "name": "Update Product",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Updated iPhone 15\",\n  \"description\": \"Updated description\",\n  \"price\": 899.99,\n  \"stock_quantity\": 30\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/products/{{productId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "products", "{{productId}}"] }
+              }
+            },
+            {
+              "name": "Delete Product",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "DELETE",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/products/{{productId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "products", "{{productId}}"] }
+              }
+            },
+            {
+              "name": "Add Product Variation",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Color: Blue\",\n  \"price_modifier\": 0,\n  \"stock_quantity\": 25,\n  \"sku\": \"IPH15-BLUE\",\n  \"is_active\": true\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/products/{{productId}}/variations", "host": ["{{baseUrl}}"], "path": ["api", "v1", "products", "{{productId}}", "variations"] }
+              }
+            },
+            {
+              "name": "Update Product Variation",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Updated Color: Blue\",\n  \"price_modifier\": 50,\n  \"stock_quantity\": 20\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/products/variations/{{variationId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "products", "variations", "{{variationId}}"] }
+              }
+            },
+            {
+              "name": "Delete Product Variation",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "DELETE",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/products/variations/{{variationId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "products", "variations", "{{variationId}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reviews (Protected)",
+          "item": [
+            {
+              "name": "Get User Reviews",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/reviews/user/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "reviews", "user", "{{userId}}"] }
+              }
+            },
+            {
+              "name": "Create Review",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Excellent service and great products!\",\n  \"user_id\": 1\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/reviews/branches/{{branchId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "reviews", "branches", "{{branchId}}"] }
+              }
+            },
+            {
+              "name": "Update Review",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rating\": 4,\n  \"comment\": \"Updated review comment\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/reviews/{{reviewId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "reviews", "{{reviewId}}"] }
+              }
+            },
+            {
+              "name": "Delete Review",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "DELETE",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/reviews/{{reviewId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "reviews", "{{reviewId}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Offers (Protected)",
+          "item": [
+            {
+              "name": "Create Branch Offer",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Summer Sale\",\n  \"description\": \"20% off on all electronics\",\n  \"discount_type\": \"percentage\",\n  \"discount_value\": 20,\n  \"start_date\": \"2024-06-01\",\n  \"end_date\": \"2024-08-31\",\n  \"is_active\": true,\n  \"min_purchase_amount\": 100,\n  \"max_discount_amount\": 500\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/offers/branches/{{branchId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "offers", "branches", "{{branchId}}"] }
+              }
+            },
+            {
+              "name": "Create Subcategory Offer",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Smartphone Discount\",\n  \"description\": \"15% off on smartphones\",\n  \"discount_type\": \"percentage\",\n  \"discount_value\": 15,\n  \"start_date\": \"2024-06-01\",\n  \"end_date\": \"2024-07-31\",\n  \"is_active\": true,\n  \"min_purchase_amount\": 200,\n  \"max_discount_amount\": 300\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/offers/branches/{{branchId}}/subcategories/{{subcategoryId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "offers", "branches", "{{branchId}}", "subcategories", "{{subcategoryId}}"] }
+              }
+            },
+            {
+              "name": "Create Product Offer",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"iPhone Special Offer\",\n  \"description\": \"$100 off on iPhone 15\",\n  \"discount_type\": \"fixed\",\n  \"discount_value\": 100,\n  \"start_date\": \"2024-06-01\",\n  \"end_date\": \"2024-06-30\",\n  \"is_active\": true,\n  \"min_purchase_amount\": 500\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/offers/products/{{productId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "offers", "products", "{{productId}}"] }
+              }
+            },
+            {
+              "name": "Update Offer",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Updated Summer Sale\",\n  \"description\": \"25% off on all electronics\",\n  \"discount_value\": 25,\n  \"end_date\": \"2024-09-30\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/api/v1/offers/{{offerId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "offers", "{{offerId}}"] }
+              }
+            },
+            {
+              "name": "Delete Offer",
+              "request": {
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+                "method": "DELETE",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/v1/offers/{{offerId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "offers", "{{offerId}}"] }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
