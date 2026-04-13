@@ -137,14 +137,17 @@ class BranchController {
   // GET /branches/nearby - Find branches near a location
   static async getNearbyBranches(req, res) {
     try {
-      const { lat, lng, radius = 10, limit = 20 } = req.query;
+      const { lat, lng, latitude, longitude, radius = 10, limit = 20 } = req.query;
 
-      if (!lat || !lng) {
+      const finalLat = lat || latitude;
+      const finalLng = lng || longitude;
+
+      if (!finalLat || !finalLng) {
         return ResponseHelper.error(res, 'Latitude and longitude are required', 400);
       }
 
-      const latFloat = parseFloat(lat);
-      const lngFloat = parseFloat(lng);
+      const latFloat = parseFloat(finalLat);
+      const lngFloat = parseFloat(finalLng);
       const radiusFloat = parseFloat(radius);
 
       // Calculate distance for each branch

@@ -70,7 +70,7 @@ const Subcategory = sequelize.define('Subcategory', {
 
 // Instance methods
 Subcategory.prototype.getProductCount = async function() {
-  const { Product } = require('./Product');
+  const Product = require('./Product');
   return await Product.count({
     where: { 
       subcategory_id: this.id,
