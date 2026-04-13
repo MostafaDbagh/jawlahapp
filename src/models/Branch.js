@@ -86,7 +86,7 @@ const Branch = sequelize.define('Branch', {
 
 // Instance methods
 Branch.prototype.getAverageRating = async function() {
-  const { Review } = require('./Review');
+  const Review = require('./Review');
   const result = await Review.findOne({
     where: { branch_id: this.id },
     attributes: [

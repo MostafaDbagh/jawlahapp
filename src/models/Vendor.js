@@ -1,4 +1,4 @@
-const { DataTypes } = require('sequelize');
+const { DataTypes, Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 
 const Vendor = sequelize.define('Vendor', {
@@ -61,28 +61,28 @@ Vendor.prototype.isSubscriptionActive = function() {
 };
 
 Vendor.prototype.getBranches = async function() {
-  const { Branch } = require('./Branch');
+  const Branch = require('./Branch');
   return await Branch.findAll({
-    where: { 
+    where: {
       vendor_id: this.id,
-      is_active: true 
+      is_active: true
     }
   });
 };
 
 Vendor.prototype.getActiveBranchesCount = async function() {
-  const { Branch } = require('./Branch');
+  const Branch = require('./Branch');
   return await Branch.count({
-    where: { 
+    where: {
       vendor_id: this.id,
-      is_active: true 
+      is_active: true
     }
   });
 };
 
 Vendor.prototype.getAverageRating = async function() {
-  const { Branch } = require('./Branch');
-  const { Review } = require('./Review');
+  const Branch = require('./Branch');
+  const Review = require('./Review');
   
   const branches = await Branch.findAll({
     where: { vendor_id: this.id },
@@ -94,7 +94,7 @@ Vendor.prototype.getAverageRating = async function() {
   const branchIds = branches.map(branch => branch.id);
   
   const result = await Review.findOne({
-    where: { branch_id: { [sequelize.Op.in]: branchIds } },
+    where: { branch_id: { [Op.in]: branchIds } },
     attributes: [
       [sequelize.fn('AVG', sequelize.col('rating')), 'averageRating'],
       [sequelize.fn('COUNT', sequelize.col('rating')), 'totalReviews']
