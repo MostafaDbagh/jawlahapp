@@ -1,90 +1,66 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
+const { attachCommon } = require('./baseSchema');
 
-const OTP = sequelize.define('OTP', {
+const otpSchema = new mongoose.Schema({
   otp_id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true,
-    field: 'otp_id'
+    type: String,
+    default: uuidv4,
+    unique: true,
+    index: true
   },
   user_id: {
-    type: DataTypes.UUID,
-    allowNull: false,
-    field: 'user_id',
-    references: {
-      model: 'users',
-      key: 'user_id'
-    }
+    type: String,
+    required: true,
+    index: true
   },
   email: {
-    type: DataTypes.STRING(255),
-    allowNull: true,
-    validate: {
-      isEmail: true
-    }
+    type: String,
+    default: null,
+    index: true
   },
   phone: {
-    type: DataTypes.STRING(20),
-    allowNull: true,
-    validate: {
-      len: [10, 20]
-    }
+    type: String,
+    default: null,
+    index: true
   },
   otp: {
-    type: DataTypes.STRING(6),
-    allowNull: false
+    type: String,
+    required: true
   },
   type: {
-    type: DataTypes.STRING(30),
-    allowNull: false,
-    validate: {
-      isIn: [['password_reset', 'email_verification', 'phone_verification', 'phone_login']]
-    }
+    type: String,
+    required: true,
+    enum: ['password_reset', 'email_verification', 'phone_verification', 'phone_login']
   },
   expires_at: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    field: 'expires_at'
+    type: Date,
+    required: true,
+    index: true
   },
   is_used: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false,
-    field: 'is_used'
+    type: Boolean,
+    default: false
   },
   attempts: {
-    type: DataTypes.INTEGER,
-    defaultValue: 0
+    type: Number,
+    default: 0
   }
 }, {
-  tableName: 'otps',
-  timestamps: true,
-  createdAt: 'created_at',
-  updatedAt: false, // No updated_at field in the schema
-  indexes: [
-    {
-      fields: ['user_id']
-    },
-    {
-      fields: ['email']
-    },
-    {
-      fields: ['phone']
-    },
-    {
-      fields: ['expires_at']
-    }
-  ]
+  collection: 'otps',
+  timestamps: { createdAt: 'created_at', updatedAt: false }
 });
 
 // Instance method to check if OTP is expired
-OTP.prototype.isExpired = function() {
+otpSchema.methods.isExpired = function isExpired() {
   return new Date() > this.expires_at;
 };
 
 // Instance method to check if OTP is valid
-OTP.prototype.isValid = function() {
+otpSchema.methods.isValid = function isValid() {
   return !this.isExpired() && !this.is_used && this.attempts < 3;
 };
 
-module.exports = OTP;
+attachCommon(otpSchema);
+
+module.exports = mongoose.models.OTP || mongoose.model('OTP', otpSchema);

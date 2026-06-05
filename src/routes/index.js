@@ -16,6 +16,8 @@ const productRoutes = require('./product/productRoutes');
 const reviewRoutes = require('./review/reviewRoutes');
 const offerRoutes = require('./offer/offerRoutes');
 const notificationRoutes = require('./notification/notificationRoutes');
+const cartRoutes = require('./cart/cartRoutes');
+const orderRoutes = require('./order/orderRoutes');
 const ResponseHelper = require('../utils/responseHelper');
 
 // Health check route
@@ -40,6 +42,8 @@ router.use('/api/v1/products', productRoutes);
 router.use('/api/v1/reviews', reviewRoutes);
 router.use('/api/v1/offers', offerRoutes);
 router.use('/api/v1/notifications', notificationRoutes);
+router.use('/api/v1/cart', cartRoutes);
+router.use('/api/v1/orders', orderRoutes);
 
 // Mobile app: POST /api/v1/saveToken (FCM / Firebase token + optional device info)
 router.post(

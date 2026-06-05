@@ -1,95 +1,94 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
+const { attachCommon } = require('./baseSchema');
 
-const Subcategory = sequelize.define('Subcategory', {
+const subcategorySchema = new mongoose.Schema({
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true
+    type: String,
+    default: uuidv4,
+    unique: true,
+    index: true
   },
   branch_id: {
-    type: DataTypes.UUID,
-    allowNull: false,
-    references: {
-      model: 'branches',
-      key: 'id'
-    }
+    type: String,
+    required: true,
+    index: true
   },
   category_id: {
-    type: DataTypes.UUID,
-    allowNull: false,
-    references: {
-      model: 'categories',
-      key: 'id'
-    }
+    type: String,
+    required: true,
+    index: true
   },
   name: {
-    type: DataTypes.STRING(255),
-    allowNull: false
+    type: String,
+    required: true
   },
   image: {
-    type: DataTypes.STRING(500),
-    allowNull: true
+    type: String,
+    default: null
   },
   has_offer: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
+    type: Boolean,
+    default: false
   },
   free_delivery: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
+    type: Boolean,
+    default: false
   },
   sort_order: {
-    type: DataTypes.INTEGER,
-    defaultValue: 0
+    type: Number,
+    default: 0,
+    index: true
   },
   is_active: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true
+    type: Boolean,
+    default: true,
+    index: true
   }
 }, {
-  tableName: 'subcategories',
-  timestamps: true,
-  createdAt: 'created_at',
-  updatedAt: 'updated_at',
-  indexes: [
-    {
-      fields: ['branch_id']
-    },
-    {
-      fields: ['category_id']
-    },
-    {
-      fields: ['is_active']
-    },
-    {
-      fields: ['sort_order']
-    }
-  ]
+  collection: 'subcategories',
+  timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
+});
+
+// Populate virtuals
+subcategorySchema.virtual('category', {
+  ref: 'Category',
+  localField: 'category_id',
+  foreignField: 'id',
+  justOne: true
+});
+
+subcategorySchema.virtual('branch', {
+  ref: 'Branch',
+  localField: 'branch_id',
+  foreignField: 'id',
+  justOne: true
+});
+
+subcategorySchema.virtual('products', {
+  ref: 'Product',
+  localField: 'id',
+  foreignField: 'subcategory_id'
 });
 
 // Instance methods
-Subcategory.prototype.getProductCount = async function() {
-  const Product = require('./Product');
-  return await Product.count({
-    where: { 
-      subcategory_id: this.id,
-      is_active: true 
-    }
+subcategorySchema.methods.getProductCount = function getProductCount() {
+  const Product = mongoose.model('Product');
+  return Product.countDocuments({ subcategory_id: this.id, is_active: true });
+};
+
+subcategorySchema.methods.getActiveOffers = function getActiveOffers() {
+  const Offer = mongoose.model('Offer');
+  const now = new Date();
+  return Offer.find({
+    entity_type: 'subcategory',
+    entity_id: this.id,
+    is_active: true,
+    start_date: { $lte: now },
+    end_date: { $gte: now }
   });
 };
 
-Subcategory.prototype.getActiveOffers = async function() {
-  const { Offer } = require('./Offer');
-  return await Offer.findAll({
-    where: {
-      entity_type: 'subcategory',
-      entity_id: this.id,
-      is_active: true,
-      start_date: { [sequelize.Op.lte]: new Date() },
-      end_date: { [sequelize.Op.gte]: new Date() }
-    }
-  });
-};
+attachCommon(subcategorySchema);
 
-module.exports = Subcategory;
+module.exports = mongoose.models.Subcategory || mongoose.model('Subcategory', subcategorySchema);

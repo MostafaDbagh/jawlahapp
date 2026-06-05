@@ -1,40 +1,36 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
+const { attachCommon } = require('./baseSchema');
 
-const ProductVariation = sequelize.define('ProductVariation', {
+const productVariationSchema = new mongoose.Schema({
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true
+    type: String,
+    default: uuidv4,
+    unique: true,
+    index: true
   },
   product_id: {
-    type: DataTypes.UUID,
-    allowNull: false,
-    references: {
-      model: 'products',
-      key: 'id'
-    }
+    type: String,
+    required: true,
+    index: true
   },
   attributes: {
-    type: DataTypes.JSONB,
-    allowNull: false
+    type: mongoose.Schema.Types.Mixed,
+    required: true
   },
   price: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: true
+    type: Number,
+    default: null
   },
   image: {
-    type: DataTypes.STRING(500),
-    allowNull: true
+    type: String,
+    default: null
   }
 }, {
-  tableName: 'product_variations',
-  timestamps: false,
-  indexes: [
-    {
-      fields: ['product_id']
-    }
-  ]
+  collection: 'product_variations',
+  timestamps: false
 });
 
-module.exports = ProductVariation;
+attachCommon(productVariationSchema);
+
+module.exports = mongoose.models.ProductVariation || mongoose.model('ProductVariation', productVariationSchema);

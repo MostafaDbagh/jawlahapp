@@ -44,23 +44,32 @@ app.use('/', routes);
 app.use((error, req, res, next) => {
   console.error('Global error handler:', error);
   
-  // Sequelize validation errors
-  if (error.name === 'SequelizeValidationError') {
+  // Mongoose validation errors
+  if (error.name === 'ValidationError') {
+    const fieldErrors = Object.values(error.errors || {}).map(err => ({
+      field: err.path,
+      message: err.message
+    }));
     return res.status(400).json(
-      ResponseHelper.error('Validation failed', error.errors.map(err => ({
-        field: err.path,
-        message: err.message
-      })), error.errors.length)
+      ResponseHelper.error('Validation failed', fieldErrors, fieldErrors.length)
     );
   }
 
-  // Sequelize unique constraint errors
-  if (error.name === 'SequelizeUniqueConstraintError') {
+  // Mongoose / MongoDB duplicate key errors
+  if (error.code === 11000) {
+    const fields = Object.keys(error.keyValue || {});
     return res.status(400).json(
-      ResponseHelper.error('Duplicate entry', error.errors.map(err => ({
-        field: err.path,
-        message: `${err.path} already exists`
-      })), error.errors.length)
+      ResponseHelper.error('Duplicate entry', fields.map(field => ({
+        field,
+        message: `${field} already exists`
+      })), fields.length)
+    );
+  }
+
+  // Mongoose bad ObjectId / cast errors
+  if (error.name === 'CastError') {
+    return res.status(400).json(
+      ResponseHelper.error(`Invalid value for ${error.path}`, null, 0)
     );
   }
 

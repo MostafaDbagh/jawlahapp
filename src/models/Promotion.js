@@ -1,99 +1,94 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
+const { attachCommon } = require('./baseSchema');
 
-const Promotion = sequelize.define('Promotion', {
+const promotionSchema = new mongoose.Schema({
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true
+    type: String,
+    default: uuidv4,
+    unique: true,
+    index: true
   },
   title: {
-    type: DataTypes.STRING(255),
-    allowNull: false
+    type: String,
+    required: true
   },
   code: {
-    type: DataTypes.STRING(50),
-    allowNull: true,
-    unique: true
+    type: String,
+    default: null,
+    unique: true,
+    sparse: true,
+    index: true
   },
   type: {
-    type: DataTypes.ENUM('percentage', 'fixed', 'free_delivery'),
-    allowNull: false
+    type: String,
+    required: true,
+    enum: ['percentage', 'fixed', 'free_delivery']
   },
   value: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: true
+    type: Number,
+    default: null
   },
   min_order_amount: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: true
+    type: Number,
+    default: null
   },
   max_discount: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: true
+    type: Number,
+    default: null
   },
   usage_limit: {
-    type: DataTypes.INTEGER,
-    allowNull: true
+    type: Number,
+    default: null
   },
   used_count: {
-    type: DataTypes.INTEGER,
-    defaultValue: 0
+    type: Number,
+    default: 0
   },
   start_date: {
-    type: DataTypes.DATE,
-    allowNull: false
+    type: Date,
+    required: true
   },
   end_date: {
-    type: DataTypes.DATE,
-    allowNull: false
+    type: Date,
+    required: true
   },
   is_active: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true
+    type: Boolean,
+    default: true,
+    index: true
   }
 }, {
-  tableName: 'promotions',
-  timestamps: true,
-  createdAt: 'created_at',
-  updatedAt: 'updated_at',
-  indexes: [
-    {
-      fields: ['code']
-    },
-    {
-      fields: ['is_active']
-    },
-    {
-      fields: ['start_date', 'end_date']
-    }
-  ]
+  collection: 'promotions',
+  timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
 });
 
+promotionSchema.index({ start_date: 1, end_date: 1 });
+
 // Instance methods
-Promotion.prototype.isValid = function() {
+promotionSchema.methods.isValid = function isValid() {
   const now = new Date();
-  return this.is_active && 
-         this.start_date <= now && 
-         this.end_date >= now &&
-         (!this.usage_limit || this.used_count < this.usage_limit);
+  return this.is_active &&
+    this.start_date <= now &&
+    this.end_date >= now &&
+    (!this.usage_limit || this.used_count < this.usage_limit);
 };
 
-Promotion.prototype.canUse = function(orderAmount = 0) {
+promotionSchema.methods.canUse = function canUse(orderAmount = 0) {
   if (!this.isValid()) return false;
-  
+
   if (this.min_order_amount && orderAmount < this.min_order_amount) {
     return false;
   }
-  
+
   return true;
 };
 
-Promotion.prototype.calculateDiscount = function(orderAmount) {
+promotionSchema.methods.calculateDiscount = function calculateDiscount(orderAmount) {
   if (!this.canUse(orderAmount)) return 0;
-  
+
   let discount = 0;
-  
+
   switch (this.type) {
     case 'percentage':
       discount = orderAmount * (this.value / 100);
@@ -105,12 +100,15 @@ Promotion.prototype.calculateDiscount = function(orderAmount) {
       discount = this.value;
       break;
     case 'free_delivery':
-      // This would be handled separately in delivery logic
       discount = 0;
       break;
+    default:
+      break;
   }
-  
+
   return Math.round(discount * 100) / 100;
 };
 
-module.exports = Promotion;
+attachCommon(promotionSchema);
+
+module.exports = mongoose.models.Promotion || mongoose.model('Promotion', promotionSchema);

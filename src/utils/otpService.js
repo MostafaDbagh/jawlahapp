@@ -11,12 +11,10 @@ class OTPService {
   async createAndSendOTP(userId, email, type, phone = null) {
     try {
       // Delete any existing unused OTPs for this user and type
-      await OTP.destroy({
-        where: {
-          user_id: userId,
-          type,
-          is_used: false
-        }
+      await OTP.deleteMany({
+        user_id: userId,
+        type,
+        is_used: false
       });
 
       // Generate new OTP
@@ -39,10 +37,14 @@ class OTPService {
         console.log(`[SMS SIMULATION] OTP ${otp} sent to ${phone}`);
         // In production, replace with actual SMS service:
         // const smsResult = await smsService.sendOTP(phone, otp);
+        const isProd = process.env.NODE_ENV === 'production';
         return {
           success: true,
           message: 'OTP sent successfully',
-          otpId: otpRecord.otp_id
+          otpId: otpRecord.otp_id,
+          // Dev convenience: surface the OTP so the mobile app can prefill it.
+          // Never returned in production. Master code 000000 also works in dev.
+          ...(isProd ? {} : { devOtp: otp })
         };
       } else if (email) {
         // Send OTP via email
@@ -83,21 +85,19 @@ class OTPService {
   // Verify OTP
   async verifyOTP(userId, email, otp, type, phone = null) {
     try {
-      const whereClause = {
+      const query = {
         user_id: userId,
         type,
         is_used: false
       };
 
       if (type === 'phone_login' && phone) {
-        whereClause.phone = phone;
+        query.phone = phone;
       } else if (email) {
-        whereClause.email = email;
+        query.email = email;
       }
 
-      const otpRecord = await OTP.findOne({
-        where: whereClause
-      });
+      const otpRecord = await OTP.findOne(query);
 
       if (!otpRecord) {
         return {
@@ -123,7 +123,7 @@ class OTPService {
         });
 
         // If attempts exceed limit, mark as used
-        if (otpRecord.attempts + 1 >= 3) {
+        if (otpRecord.attempts >= 3) {
           await otpRecord.update({ is_used: true });
           return {
             success: false,
@@ -134,7 +134,7 @@ class OTPService {
         return {
           success: false,
           message: 'Invalid OTP',
-          attemptsLeft: 3 - (otpRecord.attempts + 1)
+          attemptsLeft: 3 - otpRecord.attempts
         };
       }
 
@@ -158,15 +158,12 @@ class OTPService {
   // Clean up expired OTPs
   async cleanupExpiredOTPs() {
     try {
-      const result = await OTP.destroy({
-        where: {
-          expires_at: {
-            [require('sequelize').Op.lt]: new Date()
-          }
-        }
+      const result = await OTP.deleteMany({
+        expires_at: { $lt: new Date() }
       });
-      console.log(`Cleaned up ${result} expired OTPs`);
-      return result;
+      const deletedCount = result.deletedCount || 0;
+      console.log(`Cleaned up ${deletedCount} expired OTPs`);
+      return deletedCount;
     } catch (error) {
       console.error('OTP cleanup error:', error);
       return 0;

@@ -1,6 +1,5 @@
 const Notification = require('../models/Notification');
 const ResponseHelper = require('../utils/responseHelper');
-const { Op } = require('sequelize');
 
 class NotificationController {
   // Get notifications with pagination and filtering
@@ -19,25 +18,26 @@ class NotificationController {
         );
       }
 
-      // Build where clause
-      const whereClause = {
+      // Build query
+      const query = {
         user_id: user.user_id
       };
 
       if (type) {
-        whereClause.type = type;
+        query.type = type;
       }
 
       // Calculate offset
       const offset = (page - 1) * limit;
 
       // Fetch notifications (newest first)
-      const { count, rows } = await Notification.findAndCountAll({
-        where: whereClause,
-        order: [['created_at', 'DESC']],
-        limit,
-        offset
-      });
+      const [rows, count] = await Promise.all([
+        Notification.find(query)
+          .sort({ created_at: -1 })
+          .skip(offset)
+          .limit(limit),
+        Notification.countDocuments(query)
+      ]);
 
       // Calculate pagination metadata
       const totalPages = Math.ceil(count / limit);
@@ -72,10 +72,8 @@ class NotificationController {
       const user = req.user;
 
       const notification = await Notification.findOne({
-        where: {
-          notification_id: id,
-          user_id: user.user_id
-        }
+        notification_id: id,
+        user_id: user.user_id
       });
 
       if (!notification) {
@@ -101,4 +99,3 @@ class NotificationController {
 }
 
 module.exports = new NotificationController();
-

@@ -1,793 +1,347 @@
-const { sequelize } = require('./database');
-const { 
-  User, 
+const { connectDB } = require('./database');
+const {
+  User,
   AccountType,
-  Category, 
-  Vendor, 
-  Branch, 
-  Subcategory, 
-  Product, 
-  ProductVariation, 
-  Review, 
-  Offer 
+  Category,
+  Vendor,
+  Branch,
+  Subcategory,
+  Product,
+  ProductVariation,
+  Review,
+  Offer,
+  Promotion,
+  Notification,
+  Cart,
+  Order,
+  OTP,
+  Session,
+  Role,
+  Permission
 } = require('../models');
+
+// ---------------------------------------------------------------------------
+// Jawlah seed — Damascus, Syria. Food-focused catalog, Cash-on-Delivery only.
+// Demo login: phone 0911111111 (or any number) + master OTP code 000000.
+// The 0911111111 user owns the seeded orders + notifications so the order
+// history / tracking / notifications screens render real data right away.
+// ---------------------------------------------------------------------------
+
+// Per-category food images (Unsplash).
+const CAT_IMG = {
+  Shawarma: 'https://images.unsplash.com/photo-1633321088355-d0f81134ca3b?w=600',
+  Burgers: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=600',
+  Pizza: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=600',
+  Grills: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=600',
+  Chicken: 'https://images.unsplash.com/photo-1626645738196-c2a7c87a8f58?w=600',
+  Breakfast: 'https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=600',
+  Sandwiches: 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=600',
+  Arabic: 'https://images.unsplash.com/photo-1541518763669-27fef04b14ea?w=600',
+  Healthy: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=600',
+  Coffee: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=600',
+  Desserts: 'https://images.unsplash.com/photo-1551024601-bec78aea704b?w=600',
+  'Ice Cream': 'https://images.unsplash.com/photo-1497034825429-c343d7c6a68f?w=600',
+  Fried: 'https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=600',
+  Bakery: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=600',
+  'Fast Food': 'https://images.unsplash.com/photo-1561758033-d89a9ad46330?w=600',
+  International: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600'
+};
+
+const IMG = {
+  shawarma: CAT_IMG.Shawarma,
+  grill: CAT_IMG.Grills,
+  baklava: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=600',
+  coffee: CAT_IMG.Coffee,
+  pizza: CAT_IMG.Pizza,
+  burger: CAT_IMG.Burgers,
+  bakery: CAT_IMG.Bakery,
+  fries: CAT_IMG.Fried,
+  sandwich: CAT_IMG.Sandwiches,
+  mezze: CAT_IMG.Arabic
+};
+
+// The food categories shown on the home screen (order preserved).
+const CATEGORY_NAMES = [
+  'Shawarma', 'Burgers', 'Pizza', 'Grills', 'Chicken', 'Breakfast',
+  'Sandwiches', 'Arabic', 'Healthy', 'Coffee', 'Desserts', 'Ice Cream',
+  'Fried', 'Bakery', 'Fast Food', 'International'
+];
+
+const workTime = {
+  monday: '10:00-23:30',
+  tuesday: '10:00-23:30',
+  wednesday: '10:00-23:30',
+  thursday: '10:00-23:30',
+  friday: '12:00-24:00',
+  saturday: '10:00-24:00',
+  sunday: '10:00-23:00'
+};
 
 const seedDatabase = async () => {
   try {
-    console.log('🌱 Starting database seeding...');
+    console.log('🌱 Starting database seeding (Damascus / Syria)...');
+    await connectDB();
 
     // Clear existing data
-    await sequelize.sync({ force: true });
+    await Promise.all([
+      User.deleteMany({}),
+      AccountType.deleteMany({}),
+      Category.deleteMany({}),
+      Vendor.deleteMany({}),
+      Branch.deleteMany({}),
+      Subcategory.deleteMany({}),
+      Product.deleteMany({}),
+      ProductVariation.deleteMany({}),
+      Review.deleteMany({}),
+      Offer.deleteMany({}),
+      Promotion.deleteMany({}),
+      Notification.deleteMany({}),
+      Cart.deleteMany({}),
+      Order.deleteMany({}),
+      OTP.deleteMany({}),
+      Session.deleteMany({}),
+      Role.deleteMany({}),
+      Permission.deleteMany({})
+    ]);
     console.log('🗑️  Cleared existing data');
 
-    // Create Account Types first
-    const accountTypes = await AccountType.bulkCreate([
-      {
-        type_code: 'CUSTOMER',
-        type_name: 'Customer',
-        description: 'Regular customer account'
-      },
-      {
-        type_code: 'DRIVER',
-        type_name: 'Driver',
-        description: 'Delivery driver account'
-      },
-      {
-        type_code: 'SERVICE_PROVIDER_OWNER',
-        type_name: 'Service Provider Owner',
-        description: 'Business owner account'
-      }
+    // Account types
+    const accountTypes = await AccountType.insertMany([
+      { type_code: 'CUSTOMER', type_name: 'Customer', description: 'Regular customer account' },
+      { type_code: 'DRIVER', type_name: 'Driver', description: 'Delivery driver account' },
+      { type_code: 'SERVICE_PROVIDER_OWNER', type_name: 'Service Provider Owner', description: 'Business owner account' }
     ]);
     console.log('👤 Created account types');
 
-    // Create Users
-    const users = await User.bulkCreate([
+    // Users — Syrian numbers. phone_number is the 10-digit value the backend
+    // parser extracts from the dialled number, so logging in with these exact
+    // digits maps to these accounts.
+    const users = await User.insertMany([
       {
-        username: 'johndoe',
-        email: 'john@example.com',
-        country_code: '+1',
-        phone_number: '2345678901',
-        date_of_birth: '1990-05-15',
-        gender: 'male',
-        password_hash: 'hashedpassword123',
-        salt: 'salt123',
-        account_type: 'CUSTOMER',
-        is_active: true,
-        email_verified: true,
-        metadata: {
-          first_name: 'John',
-          last_name: 'Doe'
-        }
+        username: 'ahmad', email: 'ahmad@jawlah.sy', full_name: 'Ahmad Khaled',
+        country_code: '+963', phone_number: '0911111111', gender: 'male',
+        password_hash: 'seedphonelogin', salt: 'seedsalt', account_type: 'CUSTOMER',
+        is_active: true, phone_verified: true, preferred_language: 'ar'
       },
       {
-        username: 'janesmith',
-        email: 'jane@example.com',
-        country_code: '+44',
-        phone_number: '7123456789',
-        date_of_birth: '1985-08-22',
-        gender: 'female',
-        password_hash: 'hashedpassword123',
-        salt: 'salt123',
-        account_type: 'CUSTOMER',
-        is_active: true,
-        email_verified: true,
-        metadata: {
-          first_name: 'Jane',
-          last_name: 'Smith'
-        }
+        username: 'lina', email: 'lina@jawlah.sy', full_name: 'Lina Hassan',
+        country_code: '+963', phone_number: '0922222222', gender: 'female',
+        password_hash: 'seedphonelogin', salt: 'seedsalt', account_type: 'CUSTOMER',
+        is_active: true, phone_verified: true, preferred_language: 'ar'
       },
       {
-        username: 'mikejohnson',
-        email: 'mike@example.com',
-        country_code: '+971',
-        phone_number: '501234567',
-        date_of_birth: '1992-12-10',
-        gender: 'male',
-        password_hash: 'hashedpassword123',
-        salt: 'salt123',
-        account_type: 'CUSTOMER',
-        is_active: true,
-        email_verified: true,
-        metadata: {
-          first_name: 'Mike',
-          last_name: 'Johnson'
-        }
+        username: 'omar', email: 'omar@jawlah.sy', full_name: 'Omar Saleh',
+        country_code: '+963', phone_number: '0933333333', gender: 'male',
+        password_hash: 'seedphonelogin', salt: 'seedsalt', account_type: 'CUSTOMER',
+        is_active: true, phone_verified: true, preferred_language: 'ar'
       },
       {
-        username: 'sarahwilson',
-        email: 'sarah@example.com',
-        phone_number: '+1234567893',
-        password_hash: 'hashedpassword123',
-        salt: 'salt123',
-        account_type: 'CUSTOMER',
-        is_active: true,
-        email_verified: true,
-        metadata: {
-          first_name: 'Sarah',
-          last_name: 'Wilson'
-        }
-      },
-      {
-        username: 'davidbrown',
-        email: 'david@example.com',
-        phone_number: '+1234567894',
-        password_hash: 'hashedpassword123',
-        salt: 'salt123',
-        account_type: 'CUSTOMER',
-        is_active: true,
-        email_verified: true,
-        metadata: {
-          first_name: 'David',
-          last_name: 'Brown'
-        }
+        username: 'noura', email: 'noura@jawlah.sy', full_name: 'Noura Ali',
+        country_code: '+963', phone_number: '0944444444', gender: 'female',
+        password_hash: 'seedphonelogin', salt: 'seedsalt', account_type: 'CUSTOMER',
+        is_active: true, phone_verified: true, preferred_language: 'ar'
       }
     ]);
-    console.log('👥 Created 5 users');
+    console.log('👥 Created 4 users');
 
-    // Create Categories
-    const categories = await Category.bulkCreate([
-      {
-        name: 'Food & Beverage',
-        image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=500',
-        is_active: true
-      },
-      {
-        name: 'Electronics',
-        image: 'https://images.unsplash.com/photo-1498049794561-7780e7231661?w=500',
-        is_active: true
-      },
-      {
-        name: 'Fashion & Clothing',
-        image: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=500',
-        is_active: true
-      },
-      {
-        name: 'Health & Beauty',
-        image: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=500',
-        is_active: true
-      },
-      {
-        name: 'Home & Garden',
-        image: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=500',
-        is_active: true
-      }
-    ]);
-    console.log('📂 Created 5 categories');
+    // Categories (the food categories shown on the home screen)
+    const categories = await Category.insertMany(
+      CATEGORY_NAMES.map((name) => ({ name, image: CAT_IMG[name] || null, free_delivery: false }))
+    );
+    console.log(`📂 Created ${categories.length} categories`);
+    const cat = (name) => categories.find((c) => c.name === name);
 
-    // Create Vendors
-    const vendors = await Vendor.bulkCreate([
-      {
-        name: 'Pizza Palace',
-        image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500',
-        about: 'Authentic Italian pizza made with fresh ingredients and traditional recipes.',
-        subscript_date: new Date('2024-01-15'),
-        is_active: true
-      },
-      {
-        name: 'Burger King',
-        image: 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=500',
-        about: 'Flame-grilled burgers and crispy fries served fresh every day.',
-        subscript_date: new Date('2024-02-20'),
-        is_active: true
-      },
-      {
-        name: 'Sushi Master',
-        image: 'https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=500',
-        about: 'Fresh sushi and Japanese cuisine prepared by master chefs.',
-        subscript_date: new Date('2024-03-10'),
-        is_active: true
-      },
-      {
-        name: 'Coffee Corner',
-        image: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=500',
-        about: 'Premium coffee beans roasted daily, served with artisanal pastries.',
-        subscript_date: new Date('2024-04-05'),
-        is_active: true
-      },
-      {
-        name: 'Taco Fiesta',
-        image: 'https://images.unsplash.com/photo-1565299585323-38174c4aabaa?w=500',
-        about: 'Authentic Mexican tacos with fresh salsas and traditional flavors.',
-        subscript_date: new Date('2024-05-12'),
-        is_active: true
-      }
+    // Vendors (Damascus food shops)
+    const vendors = await Vendor.insertMany([
+      { name: 'Shawarma Al-Sham', image: IMG.shawarma, about: 'Authentic Damascene shawarma and grills.', is_active: true },
+      { name: 'Damascus Sweets', image: IMG.baklava, about: 'Traditional Syrian sweets and desserts.', is_active: true },
+      { name: 'Abu Shaker Grill', image: IMG.grill, about: 'Charcoal kebab and mezze, a Damascus favourite.', is_active: true },
+      { name: 'Pizza Corner', image: IMG.pizza, about: 'Wood-fired pizza and Italian favourites.', is_active: true },
+      { name: 'Café Younes', image: IMG.coffee, about: 'Specialty coffee and fresh pastries.', is_active: true },
+      { name: 'Burger House', image: IMG.burger, about: 'Juicy smash burgers, fried chicken and fries.', is_active: true }
     ]);
-    console.log('🏪 Created 5 vendors');
+    console.log('🏪 Created 6 vendors');
 
-    // Create Branches
-    const branches = await Branch.bulkCreate([
-      {
-        vendor_id: vendors[0].id,
-        name: 'Downtown Pizza Palace',
-        image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500',
-        lat: 40.7128,
-        lng: -74.0060,
-        address: '123 Main St',
-        city: 'New York',
-        work_time: {
-          monday: '11:00-23:00',
-          tuesday: '11:00-23:00',
-          wednesday: '11:00-23:00',
-          thursday: '11:00-23:00',
-          friday: '11:00-24:00',
-          saturday: '10:00-24:00',
-          sunday: '10:00-22:00'
-        },
-        delivery_time: '30-45 minutes',
-        min_order: 25.00,
-        delivery_fee: 5.00,
-        free_delivery: false,
-        is_active: true
-      },
-      {
-        vendor_id: vendors[0].id,
-        name: 'Uptown Pizza Palace',
-        image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500',
-        lat: 40.7589,
-        lng: -73.9851,
-        address: '456 Broadway',
-        city: 'New York',
-        work_time: {
-          monday: '11:00-23:00',
-          tuesday: '11:00-23:00',
-          wednesday: '11:00-23:00',
-          thursday: '11:00-23:00',
-          friday: '11:00-24:00',
-          saturday: '10:00-24:00',
-          sunday: '10:00-22:00'
-        },
-        delivery_time: '25-40 minutes',
-        min_order: 20.00,
-        delivery_fee: 4.00,
-        free_delivery: true,
-        is_active: true
-      },
-      {
-        vendor_id: vendors[1].id,
-        name: 'Central Burger King',
-        image: 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=500',
-        lat: 40.7505,
-        lng: -73.9934,
-        address: '789 5th Ave',
-        city: 'New York',
-        work_time: {
-          monday: '06:00-23:00',
-          tuesday: '06:00-23:00',
-          wednesday: '06:00-23:00',
-          thursday: '06:00-23:00',
-          friday: '06:00-24:00',
-          saturday: '06:00-24:00',
-          sunday: '07:00-22:00'
-        },
-        delivery_time: '20-35 minutes',
-        min_order: 15.00,
-        delivery_fee: 3.00,
-        free_delivery: false,
-        is_active: true
-      },
-      {
-        vendor_id: vendors[2].id,
-        name: 'Sushi Master Midtown',
-        image: 'https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=500',
-        lat: 40.7614,
-        lng: -73.9776,
-        address: '321 Lexington Ave',
-        city: 'New York',
-        work_time: {
-          monday: '12:00-22:00',
-          tuesday: '12:00-22:00',
-          wednesday: '12:00-22:00',
-          thursday: '12:00-22:00',
-          friday: '12:00-23:00',
-          saturday: '12:00-23:00',
-          sunday: '12:00-21:00'
-        },
-        delivery_time: '35-50 minutes',
-        min_order: 30.00,
-        delivery_fee: 6.00,
-        free_delivery: false,
-        is_active: true
-      },
-      {
-        vendor_id: vendors[3].id,
-        name: 'Coffee Corner SoHo',
-        image: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=500',
-        lat: 40.7231,
-        lng: -74.0026,
-        address: '654 Spring St',
-        city: 'New York',
-        work_time: {
-          monday: '07:00-19:00',
-          tuesday: '07:00-19:00',
-          wednesday: '07:00-19:00',
-          thursday: '07:00-19:00',
-          friday: '07:00-20:00',
-          saturday: '08:00-20:00',
-          sunday: '08:00-18:00'
-        },
-        delivery_time: '15-25 minutes',
-        min_order: 12.00,
-        delivery_fee: 2.50,
-        free_delivery: true,
-        is_active: true
-      }
+    // Branches — clustered around central Damascus (33.5138, 36.2765)
+    const branches = await Branch.insertMany([
+      { vendor_id: vendors[0].id, name: 'Shawarma Al-Sham — Mezzeh', image: IMG.shawarma, lat: 33.5102, lng: 36.2480, address: 'Mezzeh Highway', city: 'Damascus', work_time: workTime, delivery_time: '25-40 min', min_order: 20000, delivery_fee: 5000, free_delivery: false, is_active: true },
+      { vendor_id: vendors[1].id, name: 'Damascus Sweets — Salhiyah', image: IMG.baklava, lat: 33.5165, lng: 36.2920, address: 'Salhiyah St', city: 'Damascus', work_time: workTime, delivery_time: '30-45 min', min_order: 15000, delivery_fee: 4000, free_delivery: false, is_active: true },
+      { vendor_id: vendors[2].id, name: 'Abu Shaker Grill — Abu Rummaneh', image: IMG.grill, lat: 33.5210, lng: 36.2790, address: 'Abu Rummaneh', city: 'Damascus', work_time: workTime, delivery_time: '30-50 min', min_order: 30000, delivery_fee: 6000, free_delivery: false, is_active: true },
+      { vendor_id: vendors[3].id, name: 'Pizza Corner — Shaalan', image: IMG.pizza, lat: 33.5158, lng: 36.2885, address: 'Shaalan', city: 'Damascus', work_time: workTime, delivery_time: '25-40 min', min_order: 25000, delivery_fee: 5000, free_delivery: false, is_active: true },
+      { vendor_id: vendors[4].id, name: 'Café Younes — Malki', image: IMG.coffee, lat: 33.5249, lng: 36.2731, address: 'Malki', city: 'Damascus', work_time: workTime, delivery_time: '15-30 min', min_order: 12000, delivery_fee: 3000, free_delivery: false, is_active: true },
+      { vendor_id: vendors[5].id, name: 'Burger House — Baramkeh', image: IMG.burger, lat: 33.5096, lng: 36.2837, address: 'Baramkeh', city: 'Damascus', work_time: workTime, delivery_time: '25-40 min', min_order: 20000, delivery_fee: 5000, free_delivery: false, is_active: true }
     ]);
-    console.log('🏢 Created 5 branches');
+    console.log('🏢 Created 6 branches');
 
-    // Create Subcategories
-    const subcategories = await Subcategory.bulkCreate([
-      {
-        branch_id: branches[0].id,
-        category_id: categories[0].id,
-        name: 'Pizza',
-        image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500',
-        has_offer: true,
-        free_delivery: false,
-        sort_order: 1,
-        is_active: true
-      },
-      {
-        branch_id: branches[0].id,
-        category_id: categories[0].id,
-        name: 'Pasta',
-        image: 'https://images.unsplash.com/photo-1621996346565-e3dbc353d2e5?w=500',
-        has_offer: false,
-        free_delivery: false,
-        sort_order: 2,
-        is_active: true
-      },
-      {
-        branch_id: branches[0].id,
-        category_id: categories[0].id,
-        name: 'Salads',
-        image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500',
-        has_offer: false,
-        free_delivery: true,
-        sort_order: 3,
-        is_active: true
-      },
-      {
-        branch_id: branches[2].id,
-        category_id: categories[0].id,
-        name: 'Burgers',
-        image: 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=500',
-        has_offer: true,
-        free_delivery: false,
-        sort_order: 1,
-        is_active: true
-      },
-      {
-        branch_id: branches[2].id,
-        category_id: categories[0].id,
-        name: 'Fries',
-        image: 'https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=500',
-        has_offer: false,
-        free_delivery: true,
-        sort_order: 2,
-        is_active: true
-      },
-      {
-        branch_id: branches[3].id,
-        category_id: categories[0].id,
-        name: 'Sushi Rolls',
-        image: 'https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=500',
-        has_offer: true,
-        free_delivery: false,
-        sort_order: 1,
-        is_active: true
-      },
-      {
-        branch_id: branches[3].id,
-        category_id: categories[0].id,
-        name: 'Sashimi',
-        image: 'https://images.unsplash.com/photo-1553621042-f6e147245754?w=500',
-        has_offer: false,
-        free_delivery: false,
-        sort_order: 2,
-        is_active: true
-      },
-      {
-        branch_id: branches[4].id,
-        category_id: categories[0].id,
-        name: 'Coffee',
-        image: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=500',
-        has_offer: false,
-        free_delivery: true,
-        sort_order: 1,
-        is_active: true
-      },
-      {
-        branch_id: branches[4].id,
-        category_id: categories[0].id,
-        name: 'Pastries',
-        image: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=500',
-        has_offer: true,
-        free_delivery: true,
-        sort_order: 2,
-        is_active: true
-      }
+    // Subcategories (each tied to one of the food categories above)
+    const subcategories = await Subcategory.insertMany([
+      // Shawarma Al-Sham
+      { branch_id: branches[0].id, category_id: cat('Shawarma').id, name: 'Shawarma', image: CAT_IMG.Shawarma, has_offer: true, sort_order: 1, is_active: true },
+      { branch_id: branches[0].id, category_id: cat('Grills').id, name: 'Grills', image: CAT_IMG.Grills, sort_order: 2, is_active: true },
+      { branch_id: branches[0].id, category_id: cat('Sandwiches').id, name: 'Sandwiches', image: CAT_IMG.Sandwiches, sort_order: 3, is_active: true },
+      // Damascus Sweets
+      { branch_id: branches[1].id, category_id: cat('Desserts').id, name: 'Baklava', image: IMG.baklava, has_offer: true, sort_order: 1, is_active: true },
+      { branch_id: branches[1].id, category_id: cat('Desserts').id, name: 'Maamoul', image: IMG.baklava, sort_order: 2, is_active: true },
+      // Abu Shaker Grill
+      { branch_id: branches[2].id, category_id: cat('Grills').id, name: 'Kebab', image: CAT_IMG.Grills, has_offer: true, sort_order: 1, is_active: true },
+      { branch_id: branches[2].id, category_id: cat('Arabic').id, name: 'Mezze', image: CAT_IMG.Arabic, sort_order: 2, is_active: true },
+      // Pizza Corner
+      { branch_id: branches[3].id, category_id: cat('Pizza').id, name: 'Pizza', image: CAT_IMG.Pizza, has_offer: true, sort_order: 1, is_active: true },
+      { branch_id: branches[3].id, category_id: cat('Fast Food').id, name: 'Sides', image: CAT_IMG['Fast Food'], sort_order: 2, is_active: true },
+      // Café Younes
+      { branch_id: branches[4].id, category_id: cat('Coffee').id, name: 'Hot Drinks', image: CAT_IMG.Coffee, sort_order: 1, is_active: true },
+      { branch_id: branches[4].id, category_id: cat('Bakery').id, name: 'Pastries', image: CAT_IMG.Bakery, has_offer: true, sort_order: 2, is_active: true },
+      // Burger House
+      { branch_id: branches[5].id, category_id: cat('Burgers').id, name: 'Burgers', image: CAT_IMG.Burgers, has_offer: true, sort_order: 1, is_active: true },
+      { branch_id: branches[5].id, category_id: cat('Fried').id, name: 'Fried', image: CAT_IMG.Fried, sort_order: 2, is_active: true }
     ]);
-    console.log('📁 Created 9 subcategories');
+    console.log('📁 Created subcategories');
+    const sub = (name) => subcategories.find((s) => s.name === name);
 
-    // Create Products
-    const products = await Product.bulkCreate([
-      {
-        branch_id: branches[0].id,
-        subcategory_id: subcategories[0].id,
-        name: 'Margherita Pizza',
-        description: 'Classic tomato and mozzarella pizza with fresh basil',
-        image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500',
-        price: 15.99,
-        is_available: true,
-        preparation_time: '20 minutes',
-        calories: 300,
-        allergens: ['gluten', 'dairy'],
-        sort_order: 1
-      },
-      {
-        branch_id: branches[0].id,
-        subcategory_id: subcategories[0].id,
-        name: 'Pepperoni Pizza',
-        description: 'Spicy pepperoni with mozzarella cheese',
-        image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=500',
-        price: 17.99,
-        is_available: true,
-        preparation_time: '22 minutes',
-        calories: 350,
-        allergens: ['gluten', 'dairy', 'pork'],
-        sort_order: 2
-      },
-      {
-        branch_id: branches[0].id,
-        subcategory_id: subcategories[0].id,
-        name: 'Vegetarian Pizza',
-        description: 'Fresh vegetables with mozzarella cheese',
-        image: 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=500',
-        price: 16.99,
-        is_available: true,
-        preparation_time: '25 minutes',
-        calories: 280,
-        allergens: ['gluten', 'dairy'],
-        sort_order: 3
-      },
-      {
-        branch_id: branches[0].id,
-        subcategory_id: subcategories[1].id,
-        name: 'Spaghetti Carbonara',
-        description: 'Creamy pasta with bacon and parmesan cheese',
-        image: 'https://images.unsplash.com/photo-1621996346565-e3dbc353d2e5?w=500',
-        price: 14.99,
-        is_available: true,
-        preparation_time: '18 minutes',
-        calories: 450,
-        allergens: ['gluten', 'dairy', 'eggs'],
-        sort_order: 1
-      },
-      {
-        branch_id: branches[2].id,
-        subcategory_id: subcategories[3].id,
-        name: 'Classic Burger',
-        description: 'Beef patty with lettuce, tomato, and special sauce',
-        image: 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=500',
-        price: 12.99,
-        is_available: true,
-        preparation_time: '15 minutes',
-        calories: 500,
-        allergens: ['gluten', 'dairy', 'eggs'],
-        sort_order: 1
-      },
-      {
-        branch_id: branches[2].id,
-        subcategory_id: subcategories[3].id,
-        name: 'Chicken Burger',
-        description: 'Grilled chicken breast with avocado and mayo',
-        image: 'https://images.unsplash.com/photo-1606755962773-d324e9c8b1c8?w=500',
-        price: 13.99,
-        is_available: true,
-        preparation_time: '18 minutes',
-        calories: 420,
-        allergens: ['gluten', 'dairy'],
-        sort_order: 2
-      },
-      {
-        branch_id: branches[3].id,
-        subcategory_id: subcategories[5].id,
-        name: 'California Roll',
-        description: 'Crab, avocado, and cucumber roll',
-        image: 'https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=500',
-        price: 8.99,
-        is_available: true,
-        preparation_time: '12 minutes',
-        calories: 200,
-        allergens: ['fish', 'soy'],
-        sort_order: 1
-      },
-      {
-        branch_id: branches[3].id,
-        subcategory_id: subcategories[5].id,
-        name: 'Spicy Tuna Roll',
-        description: 'Spicy tuna with cucumber and scallions',
-        image: 'https://images.unsplash.com/photo-1553621042-f6e147245754?w=500',
-        price: 9.99,
-        is_available: true,
-        preparation_time: '15 minutes',
-        calories: 180,
-        allergens: ['fish', 'soy'],
-        sort_order: 2
-      },
-      {
-        branch_id: branches[4].id,
-        subcategory_id: subcategories[7].id,
-        name: 'Cappuccino',
-        description: 'Rich espresso with steamed milk foam',
-        image: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=500',
-        price: 4.99,
-        is_available: true,
-        preparation_time: '5 minutes',
-        calories: 80,
-        allergens: ['dairy'],
-        sort_order: 1
-      },
-      {
-        branch_id: branches[4].id,
-        subcategory_id: subcategories[8].id,
-        name: 'Chocolate Croissant',
-        description: 'Buttery croissant filled with chocolate',
-        image: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=500',
-        price: 3.99,
-        is_available: true,
-        preparation_time: '2 minutes',
-        calories: 250,
-        allergens: ['gluten', 'dairy', 'eggs'],
-        sort_order: 1
-      }
+    // Products (prices in SYP)
+    const products = await Product.insertMany([
+      // Shawarma Al-Sham
+      { branch_id: branches[0].id, subcategory_id: sub('Shawarma').id, name: 'Chicken Shawarma Sandwich', description: 'Marinated chicken, garlic toum, pickles in saj bread.', image: IMG.shawarma, price: 15000, is_active: true },
+      { branch_id: branches[0].id, subcategory_id: sub('Shawarma').id, name: 'Meat Shawarma Plate', description: 'Beef shawarma with fries, salad and tahini.', image: IMG.shawarma, price: 35000, is_active: true },
+      { branch_id: branches[0].id, subcategory_id: sub('Grills').id, name: 'Grilled Chicken Half', description: 'Charcoal-grilled half chicken with garlic and bread.', image: IMG.grill, price: 45000, is_active: true },
+      // Damascus Sweets
+      { branch_id: branches[1].id, subcategory_id: sub('Baklava').id, name: 'Mixed Baklava (500g)', description: 'Assorted pistachio and cashew baklava.', image: IMG.baklava, price: 60000, is_active: true },
+      { branch_id: branches[1].id, subcategory_id: sub('Maamoul').id, name: 'Maamoul with Dates (1kg)', description: 'Semolina cookies filled with dates.', image: IMG.baklava, price: 80000, is_active: true },
+      // Abu Shaker Grill
+      { branch_id: branches[2].id, subcategory_id: sub('Kebab').id, name: 'Kebab Hindi', description: 'Spiced minced-meat kebab in tomato sauce.', image: IMG.grill, price: 50000, is_active: true },
+      { branch_id: branches[2].id, subcategory_id: sub('Mezze').id, name: 'Mezze Platter', description: 'Hummus, mutabbal, tabbouleh and fattoush.', image: IMG.grill, price: 40000, is_active: true },
+      // Pizza Corner
+      { branch_id: branches[3].id, subcategory_id: sub('Pizza').id, name: 'Margherita Pizza', description: 'Tomato, mozzarella and fresh basil.', image: IMG.pizza, price: 45000, is_active: true },
+      { branch_id: branches[3].id, subcategory_id: sub('Pizza').id, name: 'Pepperoni Pizza', description: 'Spicy pepperoni with mozzarella.', image: IMG.pizza, price: 55000, is_active: true },
+      { branch_id: branches[3].id, subcategory_id: sub('Sides').id, name: 'Garlic Bread', description: 'Oven-baked bread with garlic butter.', image: IMG.bakery, price: 18000, is_active: true },
+      // Café Younes
+      { branch_id: branches[4].id, subcategory_id: sub('Hot Drinks').id, name: 'Cappuccino', description: 'Espresso with steamed milk foam.', image: IMG.coffee, price: 12000, is_active: true },
+      { branch_id: branches[4].id, subcategory_id: sub('Pastries').id, name: 'Chocolate Croissant', description: 'Buttery croissant filled with chocolate.', image: IMG.bakery, price: 9000, is_active: true },
+      // Burger House
+      { branch_id: branches[5].id, subcategory_id: sub('Burgers').id, name: 'Classic Burger', description: 'Beef patty, lettuce, tomato and special sauce.', image: IMG.burger, price: 30000, is_active: true },
+      { branch_id: branches[5].id, subcategory_id: sub('Burgers').id, name: 'Chicken Burger', description: 'Crispy chicken fillet with mayo and pickles.', image: IMG.burger, price: 32000, is_active: true },
+      { branch_id: branches[5].id, subcategory_id: sub('Fried').id, name: 'French Fries', description: 'Golden, crispy fries with a pinch of salt.', image: IMG.fries, price: 12000, is_active: true }
     ]);
-    console.log('🍕 Created 10 products');
+    console.log('🍽️  Created products');
 
-    // Create Product Variations
-    const productVariations = await ProductVariation.bulkCreate([
-      {
-        product_id: products[0].id,
-        attributes: {
-          name: 'Small (10")',
-          size: 'small',
-          diameter: '10 inches'
-        },
-        price: 15.99,
-        image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500'
-      },
-      {
-        product_id: products[0].id,
-        attributes: {
-          name: 'Medium (12")',
-          size: 'medium',
-          diameter: '12 inches'
-        },
-        price: 18.99,
-        image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500'
-      },
-      {
-        product_id: products[0].id,
-        attributes: {
-          name: 'Large (14")',
-          size: 'large',
-          diameter: '14 inches'
-        },
-        price: 21.99,
-        image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500'
-      },
-      {
-        product_id: products[4].id,
-        attributes: {
-          name: 'Single Patty',
-          patties: 1,
-          size: 'regular'
-        },
-        price: 12.99,
-        image: 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=500'
-      },
-      {
-        product_id: products[4].id,
-        attributes: {
-          name: 'Double Patty',
-          patties: 2,
-          size: 'large'
-        },
-        price: 16.99,
-        image: 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=500'
-      },
-      {
-        product_id: products[8].id,
-        attributes: {
-          name: 'Small (8oz)',
-          size: 'small',
-          volume: '8oz'
-        },
-        price: 4.99,
-        image: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=500'
-      },
-      {
-        product_id: products[8].id,
-        attributes: {
-          name: 'Large (12oz)',
-          size: 'large',
-          volume: '12oz'
-        },
-        price: 6.49,
-        image: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=500'
-      }
+    // Variations (sizes for shawarma plate, cappuccino, classic burger)
+    await ProductVariation.insertMany([
+      { product_id: products[1].id, attributes: { name: 'Regular', size: 'regular' }, price: 35000, image: IMG.shawarma },
+      { product_id: products[1].id, attributes: { name: 'Large', size: 'large' }, price: 42000, image: IMG.shawarma },
+      { product_id: products[10].id, attributes: { name: 'Small', size: 'small' }, price: 12000, image: IMG.coffee },
+      { product_id: products[10].id, attributes: { name: 'Large', size: 'large' }, price: 16000, image: IMG.coffee },
+      { product_id: products[12].id, attributes: { name: 'Single', size: 'single' }, price: 30000, image: IMG.burger },
+      { product_id: products[12].id, attributes: { name: 'Double', size: 'double' }, price: 42000, image: IMG.burger }
     ]);
-    console.log('📏 Created 7 product variations');
+    console.log('📏 Created product variations');
 
-    // Create Reviews
-    const reviews = await Review.bulkCreate([
-      {
-        branch_id: branches[0].id,
-        user_id: users[0].user_id,
-        rating: 5,
-        comment: 'Excellent pizza! Fresh ingredients and fast delivery.',
-        order_id: 'order-1',
-        is_verified: true
-      },
-      {
-        branch_id: branches[0].id,
-        user_id: users[1].user_id,
-        rating: 4,
-        comment: 'Great taste but delivery was a bit slow.',
-        order_id: 'order-2',
-        is_verified: true
-      },
-      {
-        branch_id: branches[0].id,
-        user_id: users[2].user_id,
-        rating: 5,
-        comment: 'Perfect pizza every time! Highly recommended.',
-        order_id: 'order-3',
-        is_verified: true
-      },
-      {
-        branch_id: branches[2].id,
-        user_id: users[3].user_id,
-        rating: 4,
-        comment: 'Good burgers, reasonable prices.',
-        order_id: 'order-4',
-        is_verified: true
-      },
-      {
-        branch_id: branches[2].id,
-        user_id: users[4].user_id,
-        rating: 3,
-        comment: 'Average burger, nothing special.',
-        order_id: 'order-5',
-        is_verified: true
-      },
-      {
-        branch_id: branches[3].id,
-        user_id: users[0].user_id,
-        rating: 5,
-        comment: 'Amazing sushi! Very fresh and authentic.',
-        order_id: 'order-6',
-        is_verified: true
-      },
-      {
-        branch_id: branches[3].id,
-        user_id: users[1].user_id,
-        rating: 4,
-        comment: 'Good sushi, but expensive.',
-        order_id: 'order-7',
-        is_verified: true
-      },
-      {
-        branch_id: branches[4].id,
-        user_id: users[2].user_id,
-        rating: 5,
-        comment: 'Best coffee in the neighborhood!',
-        order_id: 'order-8',
-        is_verified: true
-      },
-      {
-        branch_id: branches[4].id,
-        user_id: users[3].user_id,
-        rating: 4,
-        comment: 'Great coffee and pastries.',
-        order_id: 'order-9',
-        is_verified: true
-      },
-      {
-        branch_id: branches[1].id,
-        user_id: users[4].user_id,
-        rating: 5,
-        comment: 'Consistent quality and fast service.',
-        order_id: 'order-10',
-        is_verified: true
-      }
-    ]);
-    console.log('⭐ Created 10 reviews');
+    // ----- Test restaurant with a full 10-meal menu (for testing) -----
+    const testVendor = await Vendor.create({
+      name: 'Jawlah Test Kitchen', image: CAT_IMG.International,
+      about: 'Test restaurant — full menu for QA.', is_active: true
+    });
+    const testBranch = await Branch.create({
+      vendor_id: testVendor.id, name: 'Jawlah Test Kitchen — Downtown', image: CAT_IMG.International,
+      lat: 33.5138, lng: 36.2765, address: 'Downtown', city: 'Damascus', work_time: workTime,
+      delivery_time: '30-45 min', min_order: 20000, delivery_fee: 0, free_delivery: true, is_active: true
+    });
+    const testSub = await Subcategory.create({
+      branch_id: testBranch.id, category_id: cat('International').id, name: 'Meals',
+      image: CAT_IMG.International, sort_order: 1, is_active: true
+    });
+    const testMeals = [
+      { name: 'Test Meal 1 — Mixed Grill', description: 'Assorted grilled meats with rice.', image: CAT_IMG.Grills, price: 55000 },
+      { name: 'Test Meal 2 — Chicken Shawarma', description: 'Chicken shawarma wrap with fries.', image: CAT_IMG.Shawarma, price: 16000 },
+      { name: 'Test Meal 3 — Beef Burger', description: 'Double beef patty with cheese.', image: CAT_IMG.Burgers, price: 34000 },
+      { name: 'Test Meal 4 — Margherita Pizza', description: 'Classic cheese and tomato pizza.', image: CAT_IMG.Pizza, price: 45000 },
+      { name: 'Test Meal 5 — Caesar Salad', description: 'Crisp romaine, parmesan and croutons.', image: CAT_IMG.Healthy, price: 28000 },
+      { name: 'Test Meal 6 — Fried Chicken Bucket', description: '8 pieces of crispy fried chicken.', image: CAT_IMG.Chicken, price: 60000 },
+      { name: 'Test Meal 7 — Club Sandwich', description: 'Triple-decker chicken club with fries.', image: CAT_IMG.Sandwiches, price: 24000 },
+      { name: 'Test Meal 8 — Breakfast Platter', description: 'Eggs, halloumi, zaatar and bread.', image: CAT_IMG.Breakfast, price: 30000 },
+      { name: 'Test Meal 9 — Ice Cream Sundae', description: 'Three scoops with toppings.', image: CAT_IMG['Ice Cream'], price: 18000 },
+      { name: 'Test Meal 10 — Mixed Mezze', description: 'Hummus, mutabbal, tabbouleh and bread.', image: CAT_IMG.Arabic, price: 32000 }
+    ];
+    await Product.insertMany(
+      testMeals.map((m) => ({
+        branch_id: testBranch.id, subcategory_id: testSub.id,
+        name: m.name, description: m.description, image: m.image, price: m.price, is_active: true
+      }))
+    );
+    console.log('🧪 Created test restaurant with 10 meals');
 
-    // Create Offers
-    const offers = await Offer.bulkCreate([
+    // Reviews
+    await Review.insertMany([
+      { branch_id: branches[0].id, user_id: users[0].user_id, rating: 5, comment: 'Best shawarma in Damascus!' },
+      { branch_id: branches[0].id, user_id: users[1].user_id, rating: 4, comment: 'Tasty and fast delivery.' },
+      { branch_id: branches[1].id, user_id: users[2].user_id, rating: 5, comment: 'Baklava is fresh and not too sweet.' },
+      { branch_id: branches[2].id, user_id: users[0].user_id, rating: 5, comment: 'Kebab is excellent, great mezze too.' },
+      { branch_id: branches[4].id, user_id: users[3].user_id, rating: 4, comment: 'Lovely coffee and atmosphere.' },
+      { branch_id: branches[3].id, user_id: users[1].user_id, rating: 5, comment: 'Quick grocery delivery, free of charge.' }
+    ]);
+    console.log('⭐ Created reviews');
+
+    // Offers (used as home banners + discounts) — wide active window
+    const start = new Date('2026-01-01');
+    const end = new Date('2027-12-31');
+    await Offer.insertMany([
+      { entity_type: 'branch', entity_id: branches[0].id, title: '20% off Shawarma', description: 'Get 20% off all shawarma this week.', type: 'percentage', value: 20, start_date: start, end_date: end, is_active: true },
+      { entity_type: 'branch', entity_id: branches[1].id, title: 'Sweets Festival', description: 'Up to 50% off selected sweets!', type: 'percentage', value: 50, start_date: start, end_date: end, is_active: true },
+      { entity_type: 'branch', entity_id: branches[3].id, title: 'Pizza Tuesday', description: '15% off all pizzas every Tuesday.', type: 'percentage', value: 15, start_date: start, end_date: end, is_active: true },
+      { entity_type: 'product', entity_id: products[3].id, title: 'Baklava Deal', description: 'Special price on mixed baklava.', type: 'percentage', value: 15, start_date: start, end_date: end, is_active: true }
+    ]);
+    console.log('🎁 Created offers');
+
+    // Notifications for the demo user (ahmad / 0911111111)
+    const demo = users[0];
+    await Notification.insertMany([
+      { user_id: demo.user_id, type: 'offers', title: 'Sweets Festival 🎉', message: 'Up to 50% off selected sweets at Damascus Sweets.', is_read: false },
+      { user_id: demo.user_id, type: 'order', title: 'Order on the way 🛵', message: 'Your Abu Shaker Grill order is out for delivery.', is_read: false },
+      { user_id: demo.user_id, type: 'order', title: 'Order delivered ✅', message: 'Your Shawarma Al-Sham order was delivered. Enjoy!', is_read: true },
+      { user_id: demo.user_id, type: 'system', title: 'Welcome to Jawlah', message: 'Browse shops near you across Damascus.', is_read: true },
+      { user_id: demo.user_id, type: 'offers', title: 'Free delivery weekend', message: 'Enjoy free delivery on selected orders this weekend.', is_read: false }
+    ]);
+    console.log('🔔 Created notifications');
+
+    // Sample orders for the demo user — one delivered (history), one on the way (tracking)
+    const deliveredItems = [
+      { product_id: products[0].id, name: products[0].name, image: products[0].image, unit_price: products[0].price, qty: 2, options: null },
+      { product_id: products[2].id, name: products[2].name, image: products[2].image, unit_price: products[2].price, qty: 1, options: null }
+    ];
+    const deliveredSubtotal = deliveredItems.reduce((s, it) => s + it.unit_price * it.qty, 0);
+
+    const onTheWayItems = [
+      { product_id: products[5].id, name: products[5].name, image: products[5].image, unit_price: products[5].price, qty: 1, options: null },
+      { product_id: products[6].id, name: products[6].name, image: products[6].image, unit_price: products[6].price, qty: 1, options: null }
+    ];
+    const onTheWaySubtotal = onTheWayItems.reduce((s, it) => s + it.unit_price * it.qty, 0);
+
+    await Order.insertMany([
       {
-        entity_type: 'branch',
-        entity_id: branches[0].id,
-        title: '20% Off All Orders',
-        description: 'Get 20% discount on all orders over $30',
-        type: 'percentage',
-        value: 20.00,
-        start_date: new Date('2026-01-01'),
-        end_date: new Date('2027-12-31'),
-        is_active: true
+        user_id: demo.user_id, branch_id: branches[0].id, vendor_name: 'Shawarma Al-Sham',
+        items: deliveredItems, subtotal: deliveredSubtotal, delivery_fee: 5000, discount: 0,
+        total: deliveredSubtotal + 5000, currency: 'SYP', payment_method: 'COD', status: 'delivered',
+        delivery_address: 'Mezzeh, Damascus', leave_at_door: false, dont_ring_bell: false,
+        status_timeline: Order.buildTimeline('delivered'), eta_minutes: 0
       },
       {
-        entity_type: 'subcategory',
-        entity_id: subcategories[0].id,
-        title: 'Pizza Special',
-        description: 'Buy 2 pizzas get 1 free',
-        type: 'fixed',
-        value: 15.99,
-        start_date: new Date('2026-01-01'),
-        end_date: new Date('2027-06-30'),
-        is_active: true
-      },
-      {
-        entity_type: 'product',
-        entity_id: products[0].id,
-        title: 'Margherita Deal',
-        description: 'Special price for Margherita Pizza',
-        type: 'percentage',
-        value: 15.00,
-        start_date: new Date('2026-01-01'),
-        end_date: new Date('2027-03-31'),
-        is_active: true
-      },
-      {
-        entity_type: 'branch',
-        entity_id: branches[2].id,
-        title: 'Burger Combo',
-        description: 'Burger + Fries + Drink for $15',
-        type: 'fixed',
-        value: 5.00,
-        start_date: new Date('2026-01-01'),
-        end_date: new Date('2027-12-31'),
-        is_active: true
-      },
-      {
-        entity_type: 'branch',
-        entity_id: branches[4].id,
-        title: 'Coffee Morning Special',
-        description: '50% off coffee before 10 AM',
-        type: 'percentage',
-        value: 50.00,
-        start_date: new Date('2026-01-01'),
-        end_date: new Date('2027-12-31'),
-        is_active: true
-      },
-      {
-        entity_type: 'subcategory',
-        entity_id: subcategories[5].id,
-        title: 'Sushi Roll Deal',
-        description: '3 rolls for the price of 2',
-        type: 'fixed',
-        value: 8.99,
-        start_date: new Date('2026-01-01'),
-        end_date: new Date('2027-04-30'),
-        is_active: true
+        user_id: demo.user_id, branch_id: branches[2].id, vendor_name: 'Abu Shaker Grill',
+        items: onTheWayItems, subtotal: onTheWaySubtotal, delivery_fee: 6000, discount: 0,
+        total: onTheWaySubtotal + 6000, currency: 'SYP', payment_method: 'COD', status: 'on_the_way',
+        delivery_address: 'Abu Rummaneh, Damascus', leave_at_door: true, dont_ring_bell: false,
+        driver: { name: 'Khaled', vehicle: 'Motorcycle • Red', rating: '4.8', avatar: 'https://i.pravatar.cc/150?img=12' },
+        status_timeline: Order.buildTimeline('on_the_way'), eta_minutes: 18
       }
     ]);
-    console.log('🎁 Created 6 offers');
+    console.log('🧾 Created sample orders');
 
     console.log('✅ Database seeding completed successfully!');
     console.log('\n📊 Summary:');
-    console.log(`👤 Account Types: ${accountTypes.length}`);
-    console.log(`👥 Users: ${users.length}`);
+    console.log(`👥 Users: ${users.length}  (demo login: 0911111111 / OTP 000000)`);
     console.log(`📂 Categories: ${categories.length}`);
     console.log(`🏪 Vendors: ${vendors.length}`);
     console.log(`🏢 Branches: ${branches.length}`);
     console.log(`📁 Subcategories: ${subcategories.length}`);
-    console.log(`🍕 Products: ${products.length}`);
-    console.log(`📏 Product Variations: ${productVariations.length}`);
-    console.log(`⭐ Reviews: ${reviews.length}`);
-    console.log(`🎁 Offers: ${offers.length}`);
-
+    console.log(`🍽️  Products: ${products.length}`);
   } catch (error) {
     console.error('❌ Database seeding failed:', error);
     throw error;

@@ -1,56 +1,51 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
+const { attachCommon } = require('./baseSchema');
 
-const Review = sequelize.define('Review', {
+const reviewSchema = new mongoose.Schema({
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true
+    type: String,
+    default: uuidv4,
+    unique: true,
+    index: true
   },
   branch_id: {
-    type: DataTypes.UUID,
-    allowNull: false,
-    references: {
-      model: 'branches',
-      key: 'id'
-    }
+    type: String,
+    required: true,
+    index: true
   },
   user_id: {
-    type: DataTypes.UUID,
-    allowNull: false
+    type: String,
+    required: true,
+    index: true
   },
   rating: {
-    type: DataTypes.SMALLINT,
-    allowNull: false,
-    validate: {
-      min: 1,
-      max: 5
-    }
+    type: Number,
+    required: true,
+    min: 1,
+    max: 5,
+    index: true
   },
   comment: {
-    type: DataTypes.TEXT,
-    allowNull: true
+    type: String,
+    default: null
   }
 }, {
-  tableName: 'reviews',
-  timestamps: true,
-  createdAt: 'created_at',
-  updatedAt: false,
-  indexes: [
-    {
-      fields: ['branch_id']
-    },
-    {
-      fields: ['user_id']
-    },
-    {
-      fields: ['rating']
-    },
-    {
-      unique: true,
-      fields: ['user_id', 'branch_id']
-    }
-  ]
+  collection: 'reviews',
+  timestamps: { createdAt: 'created_at', updatedAt: false }
 });
 
-module.exports = Review;
+// One review per user per branch
+reviewSchema.index({ user_id: 1, branch_id: 1 }, { unique: true });
+
+// Populate virtual
+reviewSchema.virtual('branch', {
+  ref: 'Branch',
+  localField: 'branch_id',
+  foreignField: 'id',
+  justOne: true
+});
+
+attachCommon(reviewSchema);
+
+module.exports = mongoose.models.Review || mongoose.model('Review', reviewSchema);

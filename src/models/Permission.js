@@ -1,47 +1,48 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
+const { attachCommon } = require('./baseSchema');
 
-const Permission = sequelize.define('Permission', {
+const permissionSchema = new mongoose.Schema({
   permission_id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true,
-    field: 'permission_id'
+    type: String,
+    default: uuidv4,
+    unique: true,
+    index: true
   },
   permission_code: {
-    type: DataTypes.STRING(100),
-    allowNull: false,
+    type: String,
+    required: true,
     unique: true
   },
   permission_name: {
-    type: DataTypes.STRING(255),
-    allowNull: false
+    type: String,
+    required: true
   },
   description: {
-    type: DataTypes.TEXT,
-    allowNull: true
+    type: String,
+    default: null
   },
   module_code: {
-    type: DataTypes.STRING(50),
-    allowNull: false
+    type: String,
+    required: true
   },
   resource: {
-    type: DataTypes.STRING(100),
-    allowNull: true
+    type: String,
+    default: null
   },
   action: {
-    type: DataTypes.STRING(20),
-    allowNull: false
+    type: String,
+    required: true
   },
   is_active: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true
+    type: Boolean,
+    default: true
   }
 }, {
-  tableName: 'permissions',
-  timestamps: true,
-  createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  collection: 'permissions',
+  timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
 });
 
-module.exports = Permission;
+attachCommon(permissionSchema);
+
+module.exports = mongoose.models.Permission || mongoose.model('Permission', permissionSchema);

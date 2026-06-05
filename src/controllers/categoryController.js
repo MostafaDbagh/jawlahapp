@@ -1,6 +1,8 @@
 const Category = require('../models/Category');
 const ResponseHelper = require('../utils/responseHelper');
-const { Op } = require('sequelize');
+
+// Escape user input for safe use inside a RegExp
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 class CategoryController {
   // Get all categories with pagination and search
@@ -8,20 +10,19 @@ class CategoryController {
     try {
       const { page = 1, limit = 10, search } = req.query;
       const offset = (page - 1) * limit;
-      
-      const whereClause = {};
+
+      const query = {};
       if (search) {
-        whereClause.name = {
-          [Op.iLike]: `%${search}%`
-        };
+        query.name = { $regex: escapeRegex(search), $options: 'i' };
       }
 
-      const { count, rows: categories } = await Category.findAndCountAll({
-        where: whereClause,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        order: [['created_at', 'DESC']]
-      });
+      const [categories, count] = await Promise.all([
+        Category.find(query)
+          .sort({ created_at: -1 })
+          .skip(parseInt(offset))
+          .limit(parseInt(limit)),
+        Category.countDocuments(query)
+      ]);
 
       const totalPages = Math.ceil(count / limit);
 
@@ -49,7 +50,7 @@ class CategoryController {
     try {
       const { id } = req.params;
 
-      const category = await Category.findByPk(id);
+      const category = await Category.findOne({ id });
 
       if (!category) {
         return res.status(404).json(
@@ -75,9 +76,9 @@ class CategoryController {
     try {
       const { name, image, has_offer, free_delivery } = req.body;
 
-      // Check if category with same name already exists
+      // Check if category with same name already exists (case-insensitive)
       const existingCategory = await Category.findOne({
-        where: { name: { [Op.iLike]: name } }
+        name: { $regex: `^${escapeRegex(name)}$`, $options: 'i' }
       });
 
       if (existingCategory) {
@@ -112,7 +113,7 @@ class CategoryController {
       const { id } = req.params;
       const { name, image, has_offer, free_delivery } = req.body;
 
-      const category = await Category.findByPk(id);
+      const category = await Category.findOne({ id });
 
       if (!category) {
         return res.status(404).json(
@@ -123,10 +124,8 @@ class CategoryController {
       // Check if name is being updated and if it conflicts with existing category
       if (name && name !== category.name) {
         const existingCategory = await Category.findOne({
-          where: { 
-            name: { [Op.iLike]: name },
-            id: { [Op.ne]: id }
-          }
+          name: { $regex: `^${escapeRegex(name)}$`, $options: 'i' },
+          id: { $ne: id }
         });
 
         if (existingCategory) {
@@ -158,12 +157,12 @@ class CategoryController {
     }
   }
 
-  // Delete category (soft delete)
+  // Delete category (hard delete)
   async deleteCategory(req, res) {
     try {
       const { id } = req.params;
 
-      const category = await Category.findByPk(id);
+      const category = await Category.findOne({ id });
 
       if (!category) {
         return res.status(404).json(
@@ -171,8 +170,6 @@ class CategoryController {
         );
       }
 
-      // For now, we'll do a hard delete
-      // In a real application, you might want to implement soft delete
       await category.destroy();
 
       res.json(

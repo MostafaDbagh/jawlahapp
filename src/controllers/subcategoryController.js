@@ -1,6 +1,7 @@
-const { Subcategory, Branch, Category, Product, Offer } = require('../models');
+const { Subcategory, Branch, Category } = require('../models');
 const ResponseHelper = require('../utils/responseHelper');
-const { Op } = require('sequelize');
+
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 class SubcategoryController {
   // GET /branches/:id/subcategories - List subcategories for a branch
@@ -10,35 +11,26 @@ class SubcategoryController {
       const { page = 1, limit = 20, has_offer, free_delivery } = req.query;
 
       const offset = (page - 1) * limit;
-      const whereClause = { branch_id, is_active: true };
+      const query = { branch_id, is_active: true };
 
       // Apply filters
       if (has_offer !== undefined) {
-        whereClause.has_offer = has_offer === 'true';
+        query.has_offer = has_offer === 'true';
       }
 
       if (free_delivery !== undefined) {
-        whereClause.free_delivery = free_delivery === 'true';
+        query.free_delivery = free_delivery === 'true';
       }
 
-      const { count, rows: subcategories } = await Subcategory.findAndCountAll({
-        where: whereClause,
-        include: [
-          {
-            model: Category,
-            as: 'category',
-            attributes: ['id', 'name', 'image']
-          },
-          {
-            model: Branch,
-            as: 'branch',
-            attributes: ['id', 'name', 'city']
-          }
-        ],
-        order: [['sort_order', 'ASC'], ['name', 'ASC']],
-        limit: parseInt(limit),
-        offset: parseInt(offset)
-      });
+      const [subcategories, count] = await Promise.all([
+        Subcategory.find(query)
+          .populate({ path: 'category', select: 'id name image' })
+          .populate({ path: 'branch', select: 'id name city' })
+          .sort({ sort_order: 1, name: 1 })
+          .skip(parseInt(offset))
+          .limit(parseInt(limit)),
+        Subcategory.countDocuments(query)
+      ]);
 
       // Add product count and active offers for each subcategory
       const subcategoriesWithDetails = await Promise.all(
@@ -66,29 +58,15 @@ class SubcategoryController {
     try {
       const { id: branch_id, sub_id } = req.params;
 
-      const subcategory = await Subcategory.findOne({
-        where: { id: sub_id, branch_id, is_active: true },
-        include: [
-          {
-            model: Category,
-            as: 'category',
-            attributes: ['id', 'name', 'image']
-          },
-          {
-            model: Branch,
-            as: 'branch',
-            attributes: ['id', 'name', 'city', 'address']
-          },
-          {
-            model: Product,
-            as: 'products',
-            where: { is_active: true },
-            required: false,
-            attributes: ['id', 'name', 'price', 'image'],
-            limit: 10
-          }
-        ]
-      });
+      const subcategory = await Subcategory.findOne({ id: sub_id, branch_id, is_active: true })
+        .populate({ path: 'category', select: 'id name image' })
+        .populate({ path: 'branch', select: 'id name city address' })
+        .populate({
+          path: 'products',
+          match: { is_active: true },
+          select: 'id name price image',
+          options: { limit: 10 }
+        });
 
       if (!subcategory) {
         return ResponseHelper.error(res, 'Subcategory not found', 404);
@@ -117,21 +95,19 @@ class SubcategoryController {
       const { category_id, name, image, has_offer, free_delivery, sort_order } = req.body;
 
       // Verify branch exists
-      const branch = await Branch.findByPk(branch_id);
+      const branch = await Branch.findOne({ id: branch_id });
       if (!branch) {
         return ResponseHelper.error(res, 'Branch not found', 404);
       }
 
       // Verify category exists
-      const category = await Category.findByPk(category_id);
+      const category = await Category.findOne({ id: category_id });
       if (!category) {
         return ResponseHelper.error(res, 'Category not found', 404);
       }
 
       // Check if subcategory already exists for this branch
-      const existingSubcategory = await Subcategory.findOne({
-        where: { branch_id, category_id, name }
-      });
+      const existingSubcategory = await Subcategory.findOne({ branch_id, category_id, name });
 
       if (existingSubcategory) {
         return ResponseHelper.error(res, 'Subcategory already exists for this branch', 400);
@@ -147,20 +123,9 @@ class SubcategoryController {
         sort_order: sort_order || 0
       });
 
-      const createdSubcategory = await Subcategory.findByPk(subcategory.id, {
-        include: [
-          {
-            model: Category,
-            as: 'category',
-            attributes: ['id', 'name', 'image']
-          },
-          {
-            model: Branch,
-            as: 'branch',
-            attributes: ['id', 'name', 'city']
-          }
-        ]
-      });
+      const createdSubcategory = await Subcategory.findOne({ id: subcategory.id })
+        .populate({ path: 'category', select: 'id name image' })
+        .populate({ path: 'branch', select: 'id name city' });
 
       return ResponseHelper.item(res, createdSubcategory, 'Subcategory created successfully', 201);
     } catch (error) {
@@ -175,9 +140,7 @@ class SubcategoryController {
       const { id: branch_id, sub_id } = req.params;
       const updateData = req.body;
 
-      const subcategory = await Subcategory.findOne({
-        where: { id: sub_id, branch_id }
-      });
+      const subcategory = await Subcategory.findOne({ id: sub_id, branch_id });
 
       if (!subcategory) {
         return ResponseHelper.error(res, 'Subcategory not found', 404);
@@ -185,20 +148,9 @@ class SubcategoryController {
 
       await subcategory.update(updateData);
 
-      const updatedSubcategory = await Subcategory.findByPk(subcategory.id, {
-        include: [
-          {
-            model: Category,
-            as: 'category',
-            attributes: ['id', 'name', 'image']
-          },
-          {
-            model: Branch,
-            as: 'branch',
-            attributes: ['id', 'name', 'city']
-          }
-        ]
-      });
+      const updatedSubcategory = await Subcategory.findOne({ id: subcategory.id })
+        .populate({ path: 'category', select: 'id name image' })
+        .populate({ path: 'branch', select: 'id name city' });
 
       return ResponseHelper.item(res, updatedSubcategory, 'Subcategory updated successfully');
     } catch (error) {
@@ -212,9 +164,7 @@ class SubcategoryController {
     try {
       const { id: branch_id, sub_id } = req.params;
 
-      const subcategory = await Subcategory.findOne({
-        where: { id: sub_id, branch_id }
-      });
+      const subcategory = await Subcategory.findOne({ id: sub_id, branch_id });
 
       if (!subcategory) {
         return ResponseHelper.error(res, 'Subcategory not found', 404);
@@ -249,50 +199,41 @@ class SubcategoryController {
       } = req.query;
 
       const offset = (page - 1) * limit;
-      const whereClause = { is_active: true };
+      const query = { is_active: true };
 
       // Search by name
       if (search) {
-        whereClause.name = { [Op.iLike]: `%${search}%` };
+        query.name = { $regex: escapeRegex(search), $options: 'i' };
       }
 
       // Filter by category
       if (category_id) {
-        whereClause.category_id = category_id;
+        query.category_id = category_id;
       }
 
       // Filter by branch
       if (branch_id) {
-        whereClause.branch_id = branch_id;
+        query.branch_id = branch_id;
       }
 
       // Apply filters
       if (has_offer !== undefined) {
-        whereClause.has_offer = has_offer === 'true';
+        query.has_offer = has_offer === 'true';
       }
 
       if (free_delivery !== undefined) {
-        whereClause.free_delivery = free_delivery === 'true';
+        query.free_delivery = free_delivery === 'true';
       }
 
-      const { count, rows: subcategories } = await Subcategory.findAndCountAll({
-        where: whereClause,
-        include: [
-          {
-            model: Category,
-            as: 'category',
-            attributes: ['id', 'name', 'image']
-          },
-          {
-            model: Branch,
-            as: 'branch',
-            attributes: ['id', 'name', 'city', 'address']
-          }
-        ],
-        order: [['sort_order', 'ASC'], ['name', 'ASC']],
-        limit: parseInt(limit),
-        offset: parseInt(offset)
-      });
+      const [subcategories, count] = await Promise.all([
+        Subcategory.find(query)
+          .populate({ path: 'category', select: 'id name image' })
+          .populate({ path: 'branch', select: 'id name city address' })
+          .sort({ sort_order: 1, name: 1 })
+          .skip(parseInt(offset))
+          .limit(parseInt(limit)),
+        Subcategory.countDocuments(query)
+      ]);
 
       // Add product count for each subcategory
       const subcategoriesWithDetails = await Promise.all(

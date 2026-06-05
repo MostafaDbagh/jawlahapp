@@ -1,6 +1,7 @@
-const { Branch, Vendor, Subcategory, Product, Review, Offer } = require('../models');
+const { Branch, Vendor, Offer } = require('../models');
 const ResponseHelper = require('../utils/responseHelper');
-const { Op } = require('sequelize');
+
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 class BranchController {
   // GET /branches - List all branches with filters
@@ -24,79 +25,68 @@ class BranchController {
       } = req.query;
 
       const offset = (page - 1) * limit;
-      const whereClause = { is_active: true };
+      const query = { is_active: true };
 
       // Search filter
       if (search) {
-        whereClause[Op.or] = [
-          { name: { [Op.iLike]: `%${search}%` } },
-          { address: { [Op.iLike]: `%${search}%` } },
-          { city: { [Op.iLike]: `%${search}%` } }
-        ];
+        const regex = { $regex: escapeRegex(search), $options: 'i' };
+        query.$or = [{ name: regex }, { address: regex }, { city: regex }];
       }
 
       // City filter
       if (city) {
-        whereClause.city = { [Op.iLike]: `%${city}%` };
+        query.city = { $regex: escapeRegex(city), $options: 'i' };
       }
 
       // Free delivery filter
       if (free_delivery !== undefined) {
-        whereClause.free_delivery = free_delivery === 'true';
+        query.free_delivery = free_delivery === 'true';
       }
 
       // Vendor filter
       if (vendor_id) {
-        whereClause.vendor_id = vendor_id;
+        query.vendor_id = vendor_id;
       }
 
-      // Location-based search
+      // Location-based search (simple bounding box for performance)
       if (lat && lng) {
         const latFloat = parseFloat(lat);
         const lngFloat = parseFloat(lng);
         const radiusFloat = parseFloat(radius);
 
-        // Simple bounding box calculation for performance
         const latRange = radiusFloat / 111; // Approximate km per degree latitude
         const lngRange = radiusFloat / (111 * Math.cos(latFloat * Math.PI / 180));
 
-        whereClause.lat = {
-          [Op.between]: [latFloat - latRange, latFloat + latRange]
-        };
-        whereClause.lng = {
-          [Op.between]: [lngFloat - lngRange, lngFloat + lngRange]
-        };
+        query.lat = { $gte: latFloat - latRange, $lte: latFloat + latRange };
+        query.lng = { $gte: lngFloat - lngRange, $lte: lngFloat + lngRange };
       }
 
-      const orderClause = [[sort_by, sort_order.toUpperCase()]];
+      const sort = { [sort_by]: sort_order.toUpperCase() === 'ASC' ? 1 : -1 };
 
-      const { count, rows: branches } = await Branch.findAndCountAll({
-        where: whereClause,
-        include: [
-          {
-            model: Vendor,
-            as: 'vendor',
-            attributes: ['id', 'name', 'image', 'about']
-          },
-          {
-            model: Subcategory,
-            as: 'subcategories',
-            where: category_id ? { category_id } : undefined,
-            required: !!category_id,
-            attributes: ['id', 'name', 'image', 'has_offer', 'free_delivery']
-          }
-        ],
-        order: orderClause,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        distinct: true
-      });
+      const [branches, count] = await Promise.all([
+        Branch.find(query)
+          .populate({ path: 'vendor', select: 'id name image about' })
+          .populate({
+            path: 'subcategories',
+            match: category_id ? { category_id } : {},
+            select: 'id name image has_offer free_delivery'
+          })
+          .sort(sort)
+          .skip(parseInt(offset))
+          .limit(parseInt(limit)),
+        Branch.countDocuments(query)
+      ]);
 
       // Calculate ratings and apply filters
       const branchesWithRatings = await Promise.all(
         branches.map(async (branch) => {
+          // When filtering by category, only keep branches that have a matching subcategory
+          if (category_id && (!branch.subcategories || branch.subcategories.length === 0)) {
+            return null;
+          }
+
           const rating = await branch.getAverageRating();
-          
+
           // Apply rating filter
           if (min_rating && rating.averageRating < parseFloat(min_rating)) {
             return null;
@@ -104,14 +94,13 @@ class BranchController {
 
           // Apply offer filter
           if (has_offer === 'true') {
+            const now = new Date();
             const hasActiveOffer = await Offer.findOne({
-              where: {
-                entity_type: 'branch',
-                entity_id: branch.id,
-                is_active: true,
-                start_date: { [Op.lte]: new Date() },
-                end_date: { [Op.gte]: new Date() }
-              }
+              entity_type: 'branch',
+              entity_id: branch.id,
+              is_active: true,
+              start_date: { $lte: now },
+              end_date: { $gte: now }
             });
             if (!hasActiveOffer) return null;
           }
@@ -125,7 +114,7 @@ class BranchController {
         })
       );
 
-      const filteredBranches = branchesWithRatings.filter(branch => branch !== null);
+      const filteredBranches = branchesWithRatings.filter((branch) => branch !== null);
 
       return ResponseHelper.list(res, filteredBranches, count, 'Branches retrieved successfully');
     } catch (error) {
@@ -151,16 +140,8 @@ class BranchController {
       const radiusFloat = parseFloat(radius);
 
       // Calculate distance for each branch
-      const branches = await Branch.findAll({
-        where: { is_active: true },
-        include: [
-          {
-            model: Vendor,
-            as: 'vendor',
-            attributes: ['id', 'name', 'image']
-          }
-        ]
-      });
+      const branches = await Branch.find({ is_active: true })
+        .populate({ path: 'vendor', select: 'id name image' });
 
       const branchesWithDistance = await Promise.all(
         branches.map(async (branch) => {
@@ -183,7 +164,7 @@ class BranchController {
       );
 
       const nearbyBranches = branchesWithDistance
-        .filter(branch => branch !== null)
+        .filter((branch) => branch !== null)
         .sort((a, b) => a.distance - b.distance)
         .slice(0, parseInt(limit));
 
@@ -199,22 +180,10 @@ class BranchController {
     try {
       const { limit = 20 } = req.query;
 
-      const branches = await Branch.findAll({
-        where: { is_active: true },
-        include: [
-          {
-            model: Vendor,
-            as: 'vendor',
-            attributes: ['id', 'name', 'image']
-          },
-          {
-            model: Review,
-            as: 'reviews',
-            attributes: ['rating']
-          }
-        ],
-        limit: parseInt(limit)
-      });
+      const branches = await Branch.find({ is_active: true })
+        .populate({ path: 'vendor', select: 'id name image' })
+        .populate({ path: 'reviews', select: 'rating' })
+        .limit(parseInt(limit));
 
       const branchesWithRatings = await Promise.all(
         branches.map(async (branch) => {
@@ -249,30 +218,18 @@ class BranchController {
     try {
       const { id } = req.params;
 
-      const branch = await Branch.findOne({
-        where: { id, is_active: true },
-        include: [
-          {
-            model: Vendor,
-            as: 'vendor',
-            attributes: ['id', 'name', 'image', 'about']
-          },
-          {
-            model: Subcategory,
-            as: 'subcategories',
-            where: { is_active: true },
-            required: false,
-            attributes: ['id', 'name', 'image', 'has_offer', 'free_delivery', 'sort_order']
-          },
-          {
-            model: Review,
-            as: 'reviews',
-            attributes: ['id', 'rating', 'comment', 'created_at'],
-            limit: 10,
-            order: [['created_at', 'DESC']]
-          }
-        ]
-      });
+      const branch = await Branch.findOne({ id, is_active: true })
+        .populate({ path: 'vendor', select: 'id name image about' })
+        .populate({
+          path: 'subcategories',
+          match: { is_active: true },
+          select: 'id name image has_offer free_delivery sort_order'
+        })
+        .populate({
+          path: 'reviews',
+          select: 'id rating comment created_at',
+          options: { sort: { created_at: -1 }, limit: 10 }
+        });
 
       if (!branch) {
         return ResponseHelper.error(res, 'Branch not found', 404);
@@ -300,22 +257,20 @@ class BranchController {
       const { page = 1, limit = 20 } = req.query;
 
       const offset = (page - 1) * limit;
+      const query = { vendor_id, is_active: true };
 
-      const { count, rows: branches } = await Branch.findAndCountAll({
-        where: { vendor_id, is_active: true },
-        include: [
-          {
-            model: Subcategory,
-            as: 'subcategories',
-            where: { is_active: true },
-            required: false,
-            attributes: ['id', 'name', 'image']
-          }
-        ],
-        order: [['created_at', 'DESC']],
-        limit: parseInt(limit),
-        offset: parseInt(offset)
-      });
+      const [branches, count] = await Promise.all([
+        Branch.find(query)
+          .populate({
+            path: 'subcategories',
+            match: { is_active: true },
+            select: 'id name image'
+          })
+          .sort({ created_at: -1 })
+          .skip(parseInt(offset))
+          .limit(parseInt(limit)),
+        Branch.countDocuments(query)
+      ]);
 
       const branchesWithRatings = await Promise.all(
         branches.map(async (branch) => {
@@ -343,7 +298,7 @@ class BranchController {
       const branchData = req.body;
 
       // Verify vendor exists
-      const vendor = await Vendor.findByPk(vendor_id);
+      const vendor = await Vendor.findOne({ id: vendor_id });
       if (!vendor) {
         return ResponseHelper.error(res, 'Vendor not found', 404);
       }
@@ -353,15 +308,8 @@ class BranchController {
         vendor_id
       });
 
-      const createdBranch = await Branch.findByPk(branch.id, {
-        include: [
-          {
-            model: Vendor,
-            as: 'vendor',
-            attributes: ['id', 'name', 'image']
-          }
-        ]
-      });
+      const createdBranch = await Branch.findOne({ id: branch.id })
+        .populate({ path: 'vendor', select: 'id name image' });
 
       return ResponseHelper.item(res, createdBranch, 'Branch created successfully', 201);
     } catch (error) {
@@ -376,22 +324,15 @@ class BranchController {
       const { id } = req.params;
       const updateData = req.body;
 
-      const branch = await Branch.findByPk(id);
+      const branch = await Branch.findOne({ id });
       if (!branch) {
         return ResponseHelper.error(res, 'Branch not found', 404);
       }
 
       await branch.update(updateData);
 
-      const updatedBranch = await Branch.findByPk(id, {
-        include: [
-          {
-            model: Vendor,
-            as: 'vendor',
-            attributes: ['id', 'name', 'image']
-          }
-        ]
-      });
+      const updatedBranch = await Branch.findOne({ id })
+        .populate({ path: 'vendor', select: 'id name image' });
 
       return ResponseHelper.item(res, updatedBranch, 'Branch updated successfully');
     } catch (error) {
@@ -405,7 +346,7 @@ class BranchController {
     try {
       const { id } = req.params;
 
-      const branch = await Branch.findByPk(id);
+      const branch = await Branch.findOne({ id });
       if (!branch) {
         return ResponseHelper.error(res, 'Branch not found', 404);
       }
@@ -424,7 +365,7 @@ class BranchController {
     try {
       const { id } = req.params;
 
-      const branch = await Branch.findByPk(id);
+      const branch = await Branch.findOne({ id });
       if (!branch) {
         return ResponseHelper.error(res, 'Branch not found', 404);
       }
@@ -443,10 +384,10 @@ class BranchController {
     const R = 6371; // Earth's radius in kilometers
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLng/2) * Math.sin(dLng/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c; // Distance in kilometers
   }
 }

@@ -1,94 +1,94 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
+const { attachCommon } = require('./baseSchema');
 
-const Product = sequelize.define('Product', {
+const productSchema = new mongoose.Schema({
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true
+    type: String,
+    default: uuidv4,
+    unique: true,
+    index: true
   },
   branch_id: {
-    type: DataTypes.UUID,
-    allowNull: false,
-    references: {
-      model: 'branches',
-      key: 'id'
-    }
+    type: String,
+    required: true,
+    index: true
   },
   subcategory_id: {
-    type: DataTypes.UUID,
-    allowNull: true,
-    references: {
-      model: 'subcategories',
-      key: 'id'
-    }
+    type: String,
+    default: null,
+    index: true
   },
   name: {
-    type: DataTypes.STRING(255),
-    allowNull: false
+    type: String,
+    required: true
   },
   description: {
-    type: DataTypes.TEXT,
-    allowNull: true
+    type: String,
+    default: null
   },
   price: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: false
+    type: Number,
+    required: true,
+    index: true
   },
   image: {
-    type: DataTypes.STRING(500),
-    allowNull: true
+    type: String,
+    default: null
   },
   is_active: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true
+    type: Boolean,
+    default: true,
+    index: true
   }
 }, {
-  tableName: 'products',
-  timestamps: true,
-  createdAt: 'created_at',
-  updatedAt: 'updated_at',
-  indexes: [
-    {
-      fields: ['branch_id']
-    },
-    {
-      fields: ['subcategory_id']
-    },
-    {
-      fields: ['is_active']
-    },
-    {
-      fields: ['price']
-    }
-  ]
+  collection: 'products',
+  timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
+});
+
+// Populate virtuals
+productSchema.virtual('branch', {
+  ref: 'Branch',
+  localField: 'branch_id',
+  foreignField: 'id',
+  justOne: true
+});
+
+productSchema.virtual('subcategory', {
+  ref: 'Subcategory',
+  localField: 'subcategory_id',
+  foreignField: 'id',
+  justOne: true
+});
+
+productSchema.virtual('variations', {
+  ref: 'ProductVariation',
+  localField: 'id',
+  foreignField: 'product_id'
 });
 
 // Instance methods
-Product.prototype.getVariations = async function() {
-  const { ProductVariation } = require('./ProductVariation');
-  return await ProductVariation.findAll({
-    where: { product_id: this.id }
+productSchema.methods.getVariations = function getVariations() {
+  const ProductVariation = mongoose.model('ProductVariation');
+  return ProductVariation.find({ product_id: this.id });
+};
+
+productSchema.methods.getActiveOffers = function getActiveOffers() {
+  const Offer = mongoose.model('Offer');
+  const now = new Date();
+  return Offer.find({
+    entity_type: 'product',
+    entity_id: this.id,
+    is_active: true,
+    start_date: { $lte: now },
+    end_date: { $gte: now }
   });
 };
 
-Product.prototype.getActiveOffers = async function() {
-  const { Offer } = require('./Offer');
-  return await Offer.findAll({
-    where: {
-      entity_type: 'product',
-      entity_id: this.id,
-      is_active: true,
-      start_date: { [sequelize.Op.lte]: new Date() },
-      end_date: { [sequelize.Op.gte]: new Date() }
-    }
-  });
-};
-
-Product.prototype.getFinalPrice = async function() {
+productSchema.methods.getFinalPrice = async function getFinalPrice() {
   const offers = await this.getActiveOffers();
   let finalPrice = parseFloat(this.price);
-  
+
   for (const offer of offers) {
     if (offer.type === 'percentage') {
       finalPrice = finalPrice * (1 - offer.value / 100);
@@ -96,8 +96,10 @@ Product.prototype.getFinalPrice = async function() {
       finalPrice = Math.max(0, finalPrice - offer.value);
     }
   }
-  
-  return Math.round(finalPrice * 100) / 100; // Round to 2 decimal places
+
+  return Math.round(finalPrice * 100) / 100;
 };
 
-module.exports = Product;
+attachCommon(productSchema);
+
+module.exports = mongoose.models.Product || mongoose.model('Product', productSchema);

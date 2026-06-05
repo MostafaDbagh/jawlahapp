@@ -1,60 +1,39 @@
-const { Sequelize } = require('sequelize');
+const mongoose = require('mongoose');
 require('dotenv').config();
 
-// Simple PostgreSQL configuration for Vercel
-process.env.PG_NATIVE = 'false';
+// MongoDB connection string. Falls back to a sensible local default.
+const MONGO_URI =
+  process.env.MONGO_URI ||
+  process.env.MONGODB_URI ||
+  process.env.DATABASE_URL ||
+  'mongodb://127.0.0.1:27017/jawla';
 
-// Database configuration for Vercel
-let sequelize;
+// Reuse a single connection across serverless invocations (Vercel)
+let connectionPromise = null;
 
-if (process.env.DATABASE_URL) {
-  // Vercel Postgres or external database with DATABASE_URL
-  sequelize = new Sequelize(process.env.DATABASE_URL, {
-    dialect: 'postgres',
-    logging: process.env.NODE_ENV === 'development' ? console.log : false,
-    pool: {
-      max: 5,
-      min: 0,
-      acquire: 30000,
-      idle: 10000
-    },
-    dialectOptions: {
-      ssl: process.env.NODE_ENV === 'production' ? {
-        require: true,
-        rejectUnauthorized: false
-      } : false
-    },
-    native: false // Disable native bindings
-  });
-} else {
-  // Local development with individual environment variables
-  sequelize = new Sequelize({
-    database: process.env.DB_NAME,
-    username: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT,
-    dialect: 'postgres',
-    logging: process.env.NODE_ENV === 'development' ? console.log : false,
-    pool: {
-      max: 5,
-      min: 0,
-      acquire: 30000,
-      idle: 10000
-    },
-    native: false // Disable native bindings
-  });
-}
-
-// Test database connection
 const connectDB = async () => {
   try {
-    await sequelize.authenticate();
+    if (mongoose.connection.readyState === 1) {
+      return mongoose.connection;
+    }
+
+    mongoose.set('strictQuery', true);
+
+    if (!connectionPromise) {
+      connectionPromise = mongoose.connect(MONGO_URI, {
+        serverSelectionTimeoutMS: 30000,
+        maxPoolSize: 10
+      });
+    }
+
+    await connectionPromise;
     console.log('✅ Database connection established successfully');
+    return mongoose.connection;
   } catch (error) {
+    connectionPromise = null;
     console.error('❌ Unable to connect to the database:', error);
     throw error;
   }
 };
 
-module.exports = { sequelize, connectDB };
+module.exports = { mongoose, connectDB };

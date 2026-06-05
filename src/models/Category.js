@@ -1,65 +1,47 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
+const { attachCommon } = require('./baseSchema');
 
-const Category = sequelize.define('Category', {
+const categorySchema = new mongoose.Schema({
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true,
-    field: 'id'
+    type: String,
+    default: uuidv4,
+    unique: true,
+    index: true
   },
   name: {
-    type: DataTypes.STRING(255),
-    allowNull: false,
-    validate: {
-      len: [1, 255],
-      notEmpty: true
-    }
+    type: String,
+    required: true,
+    trim: true,
+    maxlength: 255,
+    index: true
   },
   image: {
-    type: DataTypes.STRING(500),
-    allowNull: true,
-    validate: {
-      isUrl: {
-        msg: 'Image must be a valid URL'
-      }
-    }
+    type: String,
+    default: null
   },
+  // Decimal between 0 and 1 (e.g. 0.15 for 15% off)
   has_offer: {
-    type: DataTypes.DECIMAL(5, 4), // Allows up to 99.9999%
-    allowNull: true,
-    validate: {
-      min: 0,
-      max: 1,
-      isDecimal: true
-    }
+    type: Number,
+    default: null,
+    min: 0,
+    max: 1,
+    index: true
   },
   free_delivery: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
+    type: Boolean,
+    default: false,
+    index: true
   },
   created_at: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW,
-    allowNull: false
+    type: Date,
+    default: Date.now
   }
 }, {
-  tableName: 'categories',
-  timestamps: false, // We're using created_at manually
-  indexes: [
-    {
-      name: 'idx_categories_name',
-      fields: ['name']
-    },
-    {
-      name: 'idx_categories_has_offer',
-      fields: ['has_offer']
-    },
-    {
-      name: 'idx_categories_free_delivery',
-      fields: ['free_delivery']
-    }
-  ]
+  collection: 'categories',
+  timestamps: false
 });
 
-module.exports = Category;
+attachCommon(categorySchema);
+
+module.exports = mongoose.models.Category || mongoose.model('Category', categorySchema);

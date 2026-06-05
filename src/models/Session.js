@@ -1,128 +1,104 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
+const { attachCommon } = require('./baseSchema');
 
-const Session = sequelize.define('Session', {
+const sessionSchema = new mongoose.Schema({
   session_id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true,
-    field: 'session_id'
+    type: String,
+    default: uuidv4,
+    unique: true,
+    index: true
   },
   user_id: {
-    type: DataTypes.UUID,
-    allowNull: false,
-    field: 'user_id',
-    references: {
-      model: 'users',
-      key: 'user_id'
-    }
+    type: String,
+    required: true,
+    index: true
   },
   access_token: {
-    type: DataTypes.STRING(500),
-    allowNull: false,
+    type: String,
+    required: true,
     unique: true
   },
   refresh_token: {
-    type: DataTypes.STRING(500),
-    allowNull: false,
+    type: String,
+    required: true,
     unique: true
   },
   login_time: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW,
-    field: 'login_time'
+    type: Date,
+    default: Date.now
   },
   last_activity: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW,
-    field: 'last_activity'
+    type: Date,
+    default: Date.now
   },
   expires_at: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    field: 'expires_at'
+    type: Date,
+    required: true,
+    index: true
   },
   ip_address: {
-    type: DataTypes.INET,
-    allowNull: true
+    type: String,
+    default: null
   },
   user_agent: {
-    type: DataTypes.TEXT,
-    allowNull: true
+    type: String,
+    default: null
   },
   device_id: {
-    type: DataTypes.STRING(255),
-    allowNull: true
+    type: String,
+    default: null
   },
   device_type: {
-    type: DataTypes.STRING(50),
-    allowNull: true
+    type: String,
+    default: null
   },
   location: {
-    type: DataTypes.STRING(255),
-    allowNull: true,
-    comment: 'Location coordinates (can be upgraded to GEOMETRY later with PostGIS)'
+    type: String,
+    default: null
   },
   is_active: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true
+    type: Boolean,
+    default: true,
+    index: true
   },
   terminated_at: {
-    type: DataTypes.DATE,
-    allowNull: true
+    type: Date,
+    default: null
   },
   terminated_by: {
-    type: DataTypes.UUID,
-    allowNull: true,
-    references: {
-      model: 'users',
-      key: 'user_id'
-    }
+    type: String,
+    default: null
   }
 }, {
-  tableName: 'sessions',
-  timestamps: false,
-  indexes: [
-    {
-      fields: ['user_id']
-    },
-    {
-      fields: ['access_token']
-    },
-    {
-      fields: ['refresh_token']
-    },
-    {
-      fields: ['is_active']
-    },
-    {
-      fields: ['expires_at']
-    }
-  ]
+  collection: 'sessions',
+  timestamps: false
 });
 
 // Instance method to check if session is expired
-Session.prototype.isExpired = function() {
+sessionSchema.methods.isExpired = function isExpired() {
   return new Date() > this.expires_at;
 };
 
 // Instance method to check if session is valid
-Session.prototype.isValid = function() {
+sessionSchema.methods.isValid = function isValid() {
   return this.is_active && !this.isExpired() && !this.terminated_at;
 };
 
 // Instance method to update last activity
-Session.prototype.updateActivity = async function() {
+sessionSchema.methods.updateActivity = async function updateActivity() {
   this.last_activity = new Date();
   return this.save();
 };
 
 // Instance method to terminate session
-Session.prototype.terminate = async function(terminatedBy = null) {
+sessionSchema.methods.terminate = async function terminate(terminatedBy = null) {
   this.is_active = false;
   this.terminated_at = new Date();
   this.terminated_by = terminatedBy;
   return this.save();
 };
 
-module.exports = Session;
+attachCommon(sessionSchema);
+
+module.exports = mongoose.models.Session || mongoose.model('Session', sessionSchema);

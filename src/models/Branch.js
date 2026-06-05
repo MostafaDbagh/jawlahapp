@@ -1,122 +1,139 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
+const { attachCommon } = require('./baseSchema');
 
-const Branch = sequelize.define('Branch', {
+const branchSchema = new mongoose.Schema({
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true
+    type: String,
+    default: uuidv4,
+    unique: true,
+    index: true
   },
   vendor_id: {
-    type: DataTypes.UUID,
-    allowNull: false,
-    references: {
-      model: 'vendors',
-      key: 'id'
-    }
+    type: String,
+    required: true,
+    index: true
   },
   name: {
-    type: DataTypes.STRING(255),
-    allowNull: false
+    type: String,
+    required: true
   },
   image: {
-    type: DataTypes.STRING(500),
-    allowNull: true
+    type: String,
+    default: null
   },
   lat: {
-    type: DataTypes.DOUBLE,
-    allowNull: false
+    type: Number,
+    required: true
   },
   lng: {
-    type: DataTypes.DOUBLE,
-    allowNull: false
+    type: Number,
+    required: true
   },
   address: {
-    type: DataTypes.TEXT,
-    allowNull: false
+    type: String,
+    required: true
   },
   city: {
-    type: DataTypes.STRING(100),
-    allowNull: false
+    type: String,
+    required: true,
+    index: true
   },
   work_time: {
-    type: DataTypes.JSONB,
-    allowNull: true
+    type: mongoose.Schema.Types.Mixed,
+    default: null
   },
   delivery_time: {
-    type: DataTypes.STRING(50),
-    allowNull: true
+    type: String,
+    default: null
   },
   min_order: {
-    type: DataTypes.DECIMAL(10, 2),
-    defaultValue: 0.00
+    type: Number,
+    default: 0
   },
   delivery_fee: {
-    type: DataTypes.DECIMAL(10, 2),
-    defaultValue: 0.00
+    type: Number,
+    default: 0
   },
   free_delivery: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
+    type: Boolean,
+    default: false
   },
   is_active: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true
+    type: Boolean,
+    default: true,
+    index: true
   }
 }, {
-  tableName: 'branches',
-  timestamps: true,
-  createdAt: 'created_at',
-  updatedAt: 'updated_at',
-  indexes: [
-    {
-      fields: ['vendor_id']
-    },
-    {
-      fields: ['is_active']
-    },
-    {
-      fields: ['lat', 'lng']
-    },
-    {
-      fields: ['city']
-    }
-  ]
+  collection: 'branches',
+  timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
+});
+
+branchSchema.index({ lat: 1, lng: 1 });
+
+// Populate virtuals
+branchSchema.virtual('vendor', {
+  ref: 'Vendor',
+  localField: 'vendor_id',
+  foreignField: 'id',
+  justOne: true
+});
+
+branchSchema.virtual('subcategories', {
+  ref: 'Subcategory',
+  localField: 'id',
+  foreignField: 'branch_id'
+});
+
+branchSchema.virtual('products', {
+  ref: 'Product',
+  localField: 'id',
+  foreignField: 'branch_id'
+});
+
+branchSchema.virtual('reviews', {
+  ref: 'Review',
+  localField: 'id',
+  foreignField: 'branch_id'
 });
 
 // Instance methods
-Branch.prototype.getAverageRating = async function() {
-  const Review = require('./Review');
-  const result = await Review.findOne({
-    where: { branch_id: this.id },
-    attributes: [
-      [sequelize.fn('AVG', sequelize.col('rating')), 'averageRating'],
-      [sequelize.fn('COUNT', sequelize.col('rating')), 'totalReviews']
-    ],
-    raw: true
-  });
-  
+branchSchema.methods.getAverageRating = async function getAverageRating() {
+  const Review = mongoose.model('Review');
+  const result = await Review.aggregate([
+    { $match: { branch_id: this.id } },
+    {
+      $group: {
+        _id: null,
+        averageRating: { $avg: '$rating' },
+        totalReviews: { $sum: 1 }
+      }
+    }
+  ]);
+
   return {
-    averageRating: parseFloat(result.averageRating) || 0,
-    totalReviews: parseInt(result.totalReviews) || 0
+    averageRating: result.length ? parseFloat(result[0].averageRating) || 0 : 0,
+    totalReviews: result.length ? result[0].totalReviews : 0
   };
 };
 
-Branch.prototype.isOpen = function() {
+branchSchema.methods.isOpen = function isOpen() {
   if (!this.work_time) return true;
-  
+
   const now = new Date();
   const shortDays = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
   const longDays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   const idx = now.getDay();
   const currentTime = now.toTimeString().slice(0, 5);
-  
+
   const daySchedule =
     this.work_time[shortDays[idx]] || this.work_time[longDays[idx]];
   if (!daySchedule) return false;
-  
+
   const [openTime, closeTime] = daySchedule.split('-');
   return currentTime >= openTime && currentTime <= closeTime;
 };
 
-module.exports = Branch;
+attachCommon(branchSchema);
+
+module.exports = mongoose.models.Branch || mongoose.model('Branch', branchSchema);

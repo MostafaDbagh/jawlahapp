@@ -1,6 +1,21 @@
 const { Offer, Branch, Subcategory, Product, Vendor } = require('../models');
 const ResponseHelper = require('../utils/responseHelper');
-const { Op } = require('sequelize');
+
+// Look up the entity a polymorphic offer points to
+const getEntityDetails = async (entityType, entityId) => {
+  switch (entityType) {
+    case 'branch':
+      return Branch.findOne({ id: entityId }).select('id name city address');
+    case 'subcategory':
+      return Subcategory.findOne({ id: entityId }).select('id name image');
+    case 'product':
+      return Product.findOne({ id: entityId }).select('id name price image');
+    case 'vendor':
+      return Vendor.findOne({ id: entityId }).select('id name image');
+    default:
+      return null;
+  }
+};
 
 class OfferController {
   // GET /offers/active - Get all active offers
@@ -9,61 +24,38 @@ class OfferController {
       const {
         entity_type,
         entity_id,
-        branch_id,
-        category_id,
         page = 1,
         limit = 20
       } = req.query;
 
       const offset = (page - 1) * limit;
-      const whereClause = {
+      const now = new Date();
+      const query = {
         is_active: true,
-        start_date: { [Op.lte]: new Date() },
-        end_date: { [Op.gte]: new Date() }
+        start_date: { $lte: now },
+        end_date: { $gte: now }
       };
 
       // Filter by entity type and ID
       if (entity_type) {
-        whereClause.entity_type = entity_type;
+        query.entity_type = entity_type;
       }
       if (entity_id) {
-        whereClause.entity_id = entity_id;
+        query.entity_id = entity_id;
       }
 
-      const { count, rows: offers } = await Offer.findAndCountAll({
-        where: whereClause,
-        order: [['created_at', 'DESC']],
-        limit: parseInt(limit),
-        offset: parseInt(offset)
-      });
+      const [offers, count] = await Promise.all([
+        Offer.find(query)
+          .sort({ created_at: -1 })
+          .skip(parseInt(offset))
+          .limit(parseInt(limit)),
+        Offer.countDocuments(query)
+      ]);
 
       // Add entity details for each offer
       const offersWithDetails = await Promise.all(
         offers.map(async (offer) => {
-          let entityDetails = null;
-
-          switch (offer.entity_type) {
-            case 'branch':
-              entityDetails = await Branch.findByPk(offer.entity_id, {
-                attributes: ['id', 'name', 'city', 'address']
-              });
-              break;
-            case 'subcategory':
-              entityDetails = await Subcategory.findByPk(offer.entity_id, {
-                attributes: ['id', 'name', 'image']
-              });
-              break;
-            case 'product':
-              entityDetails = await Product.findByPk(offer.entity_id, {
-                attributes: ['id', 'name', 'price', 'image']
-              });
-              break;
-            case 'vendor':
-              entityDetails = await Vendor.findByPk(offer.entity_id, {
-                attributes: ['id', 'name', 'image']
-              });
-              break;
-          }
+          const entityDetails = await getEntityDetails(offer.entity_type, offer.entity_id);
 
           return {
             ...offer.toJSON(),
@@ -86,7 +78,7 @@ class OfferController {
       const { type, value, title, description, start_date, end_date } = req.body;
 
       // Verify branch exists
-      const branch = await Branch.findByPk(branch_id);
+      const branch = await Branch.findOne({ id: branch_id });
       if (!branch) {
         return ResponseHelper.error(res, 'Branch not found', 404);
       }
@@ -116,9 +108,7 @@ class OfferController {
       const { type, value, title, description, start_date, end_date } = req.body;
 
       // Verify subcategory exists for this branch
-      const subcategory = await Subcategory.findOne({
-        where: { id: sub_id, branch_id }
-      });
+      const subcategory = await Subcategory.findOne({ id: sub_id, branch_id });
       if (!subcategory) {
         return ResponseHelper.error(res, 'Subcategory not found for this branch', 404);
       }
@@ -148,7 +138,7 @@ class OfferController {
       const { type, value, title, description, start_date, end_date } = req.body;
 
       // Verify product exists
-      const product = await Product.findByPk(product_id);
+      const product = await Product.findOne({ id: product_id });
       if (!product) {
         return ResponseHelper.error(res, 'Product not found', 404);
       }
@@ -177,7 +167,7 @@ class OfferController {
       const { id } = req.params;
       const updateData = req.body;
 
-      const offer = await Offer.findByPk(id);
+      const offer = await Offer.findOne({ id });
       if (!offer) {
         return ResponseHelper.error(res, 'Offer not found', 404);
       }
@@ -204,7 +194,7 @@ class OfferController {
     try {
       const { id } = req.params;
 
-      const offer = await Offer.findByPk(id);
+      const offer = await Offer.findOne({ id });
       if (!offer) {
         return ResponseHelper.error(res, 'Offer not found', 404);
       }
@@ -223,35 +213,12 @@ class OfferController {
     try {
       const { id } = req.params;
 
-      const offer = await Offer.findByPk(id);
+      const offer = await Offer.findOne({ id });
       if (!offer) {
         return ResponseHelper.error(res, 'Offer not found', 404);
       }
 
-      // Add entity details
-      let entityDetails = null;
-      switch (offer.entity_type) {
-        case 'branch':
-          entityDetails = await Branch.findByPk(offer.entity_id, {
-            attributes: ['id', 'name', 'city', 'address']
-          });
-          break;
-        case 'subcategory':
-          entityDetails = await Subcategory.findByPk(offer.entity_id, {
-            attributes: ['id', 'name', 'image']
-          });
-          break;
-        case 'product':
-          entityDetails = await Product.findByPk(offer.entity_id, {
-            attributes: ['id', 'name', 'price', 'image']
-          });
-          break;
-        case 'vendor':
-          entityDetails = await Vendor.findByPk(offer.entity_id, {
-            attributes: ['id', 'name', 'image']
-          });
-          break;
-      }
+      const entityDetails = await getEntityDetails(offer.entity_type, offer.entity_id);
 
       const offerData = {
         ...offer.toJSON(),
@@ -272,15 +239,15 @@ class OfferController {
       const { page = 1, limit = 20 } = req.query;
 
       const offset = (page - 1) * limit;
+      const query = { end_date: { $lt: new Date() } };
 
-      const { count, rows: offers } = await Offer.findAndCountAll({
-        where: {
-          end_date: { [Op.lt]: new Date() }
-        },
-        order: [['end_date', 'DESC']],
-        limit: parseInt(limit),
-        offset: parseInt(offset)
-      });
+      const [offers, count] = await Promise.all([
+        Offer.find(query)
+          .sort({ end_date: -1 })
+          .skip(parseInt(offset))
+          .limit(parseInt(limit)),
+        Offer.countDocuments(query)
+      ]);
 
       return ResponseHelper.list(res, offers, count, 'Expired offers retrieved successfully');
     } catch (error) {

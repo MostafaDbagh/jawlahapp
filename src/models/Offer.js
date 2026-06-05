@@ -1,79 +1,74 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
+const { attachCommon } = require('./baseSchema');
 
-const Offer = sequelize.define('Offer', {
+const offerSchema = new mongoose.Schema({
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true
+    type: String,
+    default: uuidv4,
+    unique: true,
+    index: true
   },
   entity_type: {
-    type: DataTypes.ENUM('branch', 'subcategory', 'product'),
-    allowNull: false
+    type: String,
+    required: true,
+    enum: ['branch', 'subcategory', 'product', 'vendor']
   },
   entity_id: {
-    type: DataTypes.UUID,
-    allowNull: false
+    type: String,
+    required: true,
+    index: true
   },
   type: {
-    type: DataTypes.ENUM('percentage', 'fixed', 'buy_x_get_y'),
-    allowNull: false
+    type: String,
+    required: true,
+    enum: ['percentage', 'fixed', 'buy_x_get_y']
   },
   value: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: true
+    type: Number,
+    default: null
   },
   title: {
-    type: DataTypes.STRING(255),
-    allowNull: true
+    type: String,
+    default: null
   },
   description: {
-    type: DataTypes.TEXT,
-    allowNull: true
+    type: String,
+    default: null
   },
   start_date: {
-    type: DataTypes.DATE,
-    allowNull: false
+    type: Date,
+    required: true
   },
   end_date: {
-    type: DataTypes.DATE,
-    allowNull: false
+    type: Date,
+    required: true
   },
   is_active: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true
+    type: Boolean,
+    default: true
   }
 }, {
-  tableName: 'offers',
-  timestamps: true,
-  createdAt: 'created_at',
-  updatedAt: 'updated_at',
-  indexes: [
-    {
-      fields: ['entity_type', 'entity_id', 'is_active']
-    },
-    {
-      fields: ['start_date', 'end_date', 'is_active']
-    },
-    {
-      fields: ['type']
-    }
-  ]
+  collection: 'offers',
+  timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
 });
 
+offerSchema.index({ entity_type: 1, entity_id: 1, is_active: 1 });
+offerSchema.index({ start_date: 1, end_date: 1, is_active: 1 });
+
 // Instance methods
-Offer.prototype.isValid = function() {
+offerSchema.methods.isValid = function isValid() {
   const now = new Date();
-  return this.is_active && 
-         this.start_date <= now && 
-         this.end_date >= now;
+  return this.is_active &&
+    this.start_date <= now &&
+    this.end_date >= now;
 };
 
-Offer.prototype.calculateDiscount = function(originalPrice) {
+offerSchema.methods.calculateDiscount = function calculateDiscount(originalPrice) {
   if (!this.isValid()) return originalPrice;
-  
+
   let discountedPrice = parseFloat(originalPrice);
-  
+
   switch (this.type) {
     case 'percentage':
       discountedPrice = discountedPrice * (1 - this.value / 100);
@@ -84,9 +79,13 @@ Offer.prototype.calculateDiscount = function(originalPrice) {
     case 'buy_x_get_y':
       // Implementation depends on specific business logic
       break;
+    default:
+      break;
   }
-  
+
   return Math.round(discountedPrice * 100) / 100;
 };
 
-module.exports = Offer;
+attachCommon(offerSchema);
+
+module.exports = mongoose.models.Offer || mongoose.model('Offer', offerSchema);

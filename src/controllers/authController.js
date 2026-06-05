@@ -5,38 +5,30 @@ const jwtService = require('../utils/jwtService');
 const ResponseHelper = require('../utils/responseHelper');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { Op } = require('sequelize');
 
 class AuthController {
   // User registration
   async register(req, res) {
     try {
-      const { 
-        username, 
-        email, 
+      const {
+        username,
+        email,
         full_name,
-        country_code, 
-        phone_number, 
-        date_of_birth, 
-        gender, 
-        password_hash, 
-        account_type 
+        country_code,
+        phone_number,
+        date_of_birth,
+        gender,
+        password_hash,
+        account_type
       } = req.body;
 
       // Check if user already exists
       const existingUser = await User.findOne({
-        where: { 
-          [Op.or]: [
-            { email },
-            { username },
-            { 
-              [Op.and]: [
-                { country_code },
-                { phone_number }
-              ]
-            }
-          ]
-        }
+        $or: [
+          { email },
+          { username },
+          { country_code, phone_number }
+        ]
       });
 
       if (existingUser) {
@@ -100,9 +92,7 @@ class AuthController {
       const { email, password_hash } = req.body;
 
       // Find user by email
-      const user = await User.findOne({
-        where: { email }
-      });
+      const user = await User.findOne({ email });
 
       if (!user) {
         return res.status(401).json(
@@ -129,7 +119,7 @@ class AuthController {
       if (!isPasswordValid) {
         // Increment failed login attempts
         await user.incrementFailedAttempts();
-        
+
         return res.status(401).json(
           ResponseHelper.error('Invalid email or password', null, 0)
         );
@@ -137,7 +127,7 @@ class AuthController {
 
       // Reset failed login attempts on successful login
       await user.resetFailedAttempts();
-      
+
       // Update last login
       await user.updateLastLogin();
 
@@ -166,9 +156,7 @@ class AuthController {
       const { email } = req.body;
 
       // Find user by email
-      const user = await User.findOne({
-        where: { email }
-      });
+      const user = await User.findOne({ email });
 
       if (!user) {
         return res.status(404).json(
@@ -206,9 +194,7 @@ class AuthController {
       const { email, otp, newPassword } = req.body;
 
       // Find user by email
-      const user = await User.findOne({
-        where: { email }
-      });
+      const user = await User.findOne({ email });
 
       if (!user) {
         return res.status(404).json(
@@ -250,9 +236,7 @@ class AuthController {
       const { email, otp, type } = req.body;
 
       // Find user by email
-      const user = await User.findOne({
-        where: { email }
-      });
+      const user = await User.findOne({ email });
 
       if (!user) {
         return res.status(404).json({
@@ -277,12 +261,12 @@ class AuthController {
 
       // Update user verification status based on type
       if (type === 'email_verification') {
-        await user.update({ 
+        await user.update({
           email_verified: true,
           is_verified: user.phone_verified // Set is_verified if both email and phone are verified
         });
       } else if (type === 'phone_verification') {
-        await user.update({ 
+        await user.update({
           phone_verified: true,
           is_verified: user.email_verified // Set is_verified if both email and phone are verified
         });
@@ -307,9 +291,7 @@ class AuthController {
       const { email, type } = req.body;
 
       // Find user by email
-      const user = await User.findOne({
-        where: { email }
-      });
+      const user = await User.findOne({ email });
 
       if (!user) {
         return res.status(404).json(
@@ -398,7 +380,7 @@ class AuthController {
 
       // Verify refresh token
       const result = jwtService.verifyToken(refreshToken);
-      
+
       if (!result.success) {
         return res.status(401).json(
           ResponseHelper.error('Invalid refresh token', null, 0)
@@ -406,7 +388,7 @@ class AuthController {
       }
 
       // Check if user exists and is active
-      const user = await User.findByPk(result.payload.userId);
+      const user = await User.findOne({ user_id: result.payload.userId });
       if (!user || !user.is_active) {
         return res.status(401).json(
           ResponseHelper.error('User not found or account is inactive', null, 0)
@@ -461,8 +443,6 @@ class AuthController {
       }
 
       // Parse phone number: format is +[country_code][phone_number]
-      // We'll try to find user by matching phone_number (last 10 digits typically)
-      // and country_code separately
       const cleanPhone = phone.replace(/^\+/, ''); // Remove leading +
       const phoneNumber = cleanPhone.slice(-10); // Last 10 digits
       const countryCode = cleanPhone.slice(0, -10) || '1'; // Everything before last 10 digits, default to 1
@@ -470,23 +450,21 @@ class AuthController {
       // Find user by country code and phone number
       // Try both with and without + prefix
       const user = await User.findOne({
-        where: {
-          [Op.or]: [
-            { country_code: `+${countryCode}`, phone_number: phoneNumber },
-            { country_code: countryCode, phone_number: phoneNumber }
-          ]
-        }
+        $or: [
+          { country_code: `+${countryCode}`, phone_number: phoneNumber },
+          { country_code: countryCode, phone_number: phoneNumber }
+        ]
       });
 
       // If user doesn't exist, create a new user account
       let userId;
       if (!user) {
         // Create a minimal user account for phone login
-        
+
         // Generate a temporary username and email
         const tempUsername = `user_${Date.now()}`;
         const tempEmail = `temp_${Date.now()}@phone.login`;
-        
+
         // Create user with minimal info
         const newUser = await User.create({
           username: tempUsername,
@@ -498,11 +476,11 @@ class AuthController {
           account_type: 'CUSTOMER',
           phone_verified: false // Will be verified after OTP confirmation
         });
-        
+
         userId = newUser.user_id;
       } else {
         userId = user.user_id;
-        
+
         // Check if user is active
         if (!user.is_active) {
           return res.status(401).json(
@@ -520,8 +498,13 @@ class AuthController {
       );
 
       if (otpResult.success) {
+        // In development, return the OTP (and the master-code hint) so the app
+        // can prefill it without a real SMS gateway. Suppressed in production.
+        const devPayload = process.env.NODE_ENV === 'production'
+          ? null
+          : { devOtp: otpResult.devOtp, masterCode: '000000' };
         res.json(
-          ResponseHelper.success(null, 'OTP sent successfully', 0)
+          ResponseHelper.success(devPayload, 'OTP sent successfully', 0)
         );
       } else {
         res.status(500).json(
@@ -564,12 +547,10 @@ class AuthController {
       // Find user by country code and phone number
       // Try both with and without + prefix
       const user = await User.findOne({
-        where: {
-          [Op.or]: [
-            { country_code: `+${countryCode}`, phone_number: phoneNumber },
-            { country_code: countryCode, phone_number: phoneNumber }
-          ]
-        }
+        $or: [
+          { country_code: `+${countryCode}`, phone_number: phoneNumber },
+          { country_code: countryCode, phone_number: phoneNumber }
+        ]
       });
 
       if (!user) {
@@ -585,14 +566,20 @@ class AuthController {
         );
       }
 
-      // Verify OTP
-      const otpVerification = await otpService.verifyOTP(
-        user.user_id,
-        null, // No email for phone login
-        otp,
-        'phone_login',
-        phone
-      );
+      // Dev master code: skip OTP verification when not in production so the
+      // app can be tested without a real SMS gateway. Gated to development.
+      const isMasterCode = process.env.NODE_ENV !== 'production' && otp === '000000';
+
+      // Verify OTP (skipped for the dev master code)
+      const otpVerification = isMasterCode
+        ? { success: true }
+        : await otpService.verifyOTP(
+            user.user_id,
+            null, // No email for phone login
+            otp,
+            'phone_login',
+            phone
+          );
 
       if (!otpVerification.success) {
         return res.status(400).json(
@@ -602,7 +589,7 @@ class AuthController {
 
       // Mark phone as verified
       if (!user.phone_verified) {
-        await user.update({ 
+        await user.update({
           phone_verified: true,
           is_verified: user.email_verified // Set is_verified if both email and phone are verified
         });

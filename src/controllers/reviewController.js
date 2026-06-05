@@ -1,6 +1,5 @@
-const { Review, Branch, User } = require('../models');
+const { Review, Branch } = require('../models');
 const ResponseHelper = require('../utils/responseHelper');
-const { Op } = require('sequelize');
 
 class ReviewController {
   // GET /branches/:id/reviews - Get reviews for a branch
@@ -10,28 +9,23 @@ class ReviewController {
       const { page = 1, limit = 20, rating, sort_by = 'created_at', sort_order = 'DESC' } = req.query;
 
       const offset = (page - 1) * limit;
-      const whereClause = { branch_id };
+      const query = { branch_id };
 
       // Filter by rating
       if (rating) {
-        whereClause.rating = parseInt(rating);
+        query.rating = parseInt(rating);
       }
 
-      const orderClause = [[sort_by, sort_order.toUpperCase()]];
+      const sort = { [sort_by]: sort_order.toUpperCase() === 'ASC' ? 1 : -1 };
 
-      const { count, rows: reviews } = await Review.findAndCountAll({
-        where: whereClause,
-        include: [
-          {
-            model: Branch,
-            as: 'branch',
-            attributes: ['id', 'name', 'city']
-          }
-        ],
-        order: orderClause,
-        limit: parseInt(limit),
-        offset: parseInt(offset)
-      });
+      const [reviews, count] = await Promise.all([
+        Review.find(query)
+          .populate({ path: 'branch', select: 'id name city' })
+          .sort(sort)
+          .skip(parseInt(offset))
+          .limit(parseInt(limit)),
+        Review.countDocuments(query)
+      ]);
 
       return ResponseHelper.list(res, reviews, count, 'Branch reviews retrieved successfully');
     } catch (error) {
@@ -47,15 +41,13 @@ class ReviewController {
       const { user_id, rating, comment } = req.body;
 
       // Verify branch exists
-      const branch = await Branch.findByPk(branch_id);
+      const branch = await Branch.findOne({ id: branch_id });
       if (!branch) {
         return ResponseHelper.error(res, 'Branch not found', 404);
       }
 
       // Check if user already reviewed this branch
-      const existingReview = await Review.findOne({
-        where: { branch_id, user_id }
-      });
+      const existingReview = await Review.findOne({ branch_id, user_id });
 
       if (existingReview) {
         return ResponseHelper.error(res, 'You have already reviewed this branch', 400);
@@ -73,15 +65,8 @@ class ReviewController {
         comment
       });
 
-      const createdReview = await Review.findByPk(review.id, {
-        include: [
-          {
-            model: Branch,
-            as: 'branch',
-            attributes: ['id', 'name', 'city']
-          }
-        ]
-      });
+      const createdReview = await Review.findOne({ id: review.id })
+        .populate({ path: 'branch', select: 'id name city' });
 
       return ResponseHelper.item(res, createdReview, 'Review added successfully', 201);
     } catch (error) {
@@ -96,7 +81,7 @@ class ReviewController {
       const { id } = req.params;
       const { rating, comment } = req.body;
 
-      const review = await Review.findByPk(id);
+      const review = await Review.findOne({ id });
       if (!review) {
         return ResponseHelper.error(res, 'Review not found', 404);
       }
@@ -108,15 +93,8 @@ class ReviewController {
 
       await review.update({ rating, comment });
 
-      const updatedReview = await Review.findByPk(id, {
-        include: [
-          {
-            model: Branch,
-            as: 'branch',
-            attributes: ['id', 'name', 'city']
-          }
-        ]
-      });
+      const updatedReview = await Review.findOne({ id })
+        .populate({ path: 'branch', select: 'id name city' });
 
       return ResponseHelper.item(res, updatedReview, 'Review updated successfully');
     } catch (error) {
@@ -130,7 +108,7 @@ class ReviewController {
     try {
       const { id } = req.params;
 
-      const review = await Review.findByPk(id);
+      const review = await Review.findOne({ id });
       if (!review) {
         return ResponseHelper.error(res, 'Review not found', 404);
       }
@@ -152,19 +130,14 @@ class ReviewController {
 
       const offset = (page - 1) * limit;
 
-      const { count, rows: reviews } = await Review.findAndCountAll({
-        where: { user_id },
-        include: [
-          {
-            model: Branch,
-            as: 'branch',
-            attributes: ['id', 'name', 'city', 'address']
-          }
-        ],
-        order: [['created_at', 'DESC']],
-        limit: parseInt(limit),
-        offset: parseInt(offset)
-      });
+      const [reviews, count] = await Promise.all([
+        Review.find({ user_id })
+          .populate({ path: 'branch', select: 'id name city address' })
+          .sort({ created_at: -1 })
+          .skip(parseInt(offset))
+          .limit(parseInt(limit)),
+        Review.countDocuments({ user_id })
+      ]);
 
       return ResponseHelper.list(res, reviews, count, 'User reviews retrieved successfully');
     } catch (error) {
@@ -178,36 +151,33 @@ class ReviewController {
     try {
       const { branch_id } = req.params;
 
-      const stats = await Review.findOne({
-        where: { branch_id },
-        attributes: [
-          [Review.sequelize.fn('AVG', Review.sequelize.col('rating')), 'averageRating'],
-          [Review.sequelize.fn('COUNT', Review.sequelize.col('rating')), 'totalReviews'],
-          [Review.sequelize.fn('MIN', Review.sequelize.col('rating')), 'minRating'],
-          [Review.sequelize.fn('MAX', Review.sequelize.col('rating')), 'maxRating']
-        ],
-        raw: true
-      });
+      const [stats] = await Review.aggregate([
+        { $match: { branch_id } },
+        {
+          $group: {
+            _id: null,
+            averageRating: { $avg: '$rating' },
+            totalReviews: { $sum: 1 },
+            minRating: { $min: '$rating' },
+            maxRating: { $max: '$rating' }
+          }
+        }
+      ]);
 
       // Get rating distribution
-      const ratingDistribution = await Review.findAll({
-        where: { branch_id },
-        attributes: [
-          'rating',
-          [Review.sequelize.fn('COUNT', Review.sequelize.col('rating')), 'count']
-        ],
-        group: ['rating'],
-        order: [['rating', 'ASC']],
-        raw: true
-      });
+      const ratingDistribution = await Review.aggregate([
+        { $match: { branch_id } },
+        { $group: { _id: '$rating', count: { $sum: 1 } } },
+        { $sort: { _id: 1 } }
+      ]);
 
       const statsData = {
-        average_rating: parseFloat(stats.averageRating) || 0,
-        total_reviews: parseInt(stats.totalReviews) || 0,
-        min_rating: parseInt(stats.minRating) || 0,
-        max_rating: parseInt(stats.maxRating) || 0,
+        average_rating: stats ? parseFloat(stats.averageRating) || 0 : 0,
+        total_reviews: stats ? stats.totalReviews : 0,
+        min_rating: stats ? stats.minRating : 0,
+        max_rating: stats ? stats.maxRating : 0,
         rating_distribution: ratingDistribution.reduce((acc, item) => {
-          acc[`rating_${item.rating}`] = parseInt(item.count);
+          acc[`rating_${item._id}`] = item.count;
           return acc;
         }, {})
       };

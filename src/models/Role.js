@@ -1,60 +1,60 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
+const { attachCommon } = require('./baseSchema');
 
-const Role = sequelize.define('Role', {
+const roleSchema = new mongoose.Schema({
   role_id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true,
-    field: 'role_id'
+    type: String,
+    default: uuidv4,
+    unique: true,
+    index: true
   },
   role_code: {
-    type: DataTypes.STRING(50),
-    allowNull: false,
+    type: String,
+    required: true,
     unique: true
   },
   role_name: {
-    type: DataTypes.STRING(100),
-    allowNull: false
+    type: String,
+    required: true
   },
   description: {
-    type: DataTypes.TEXT,
-    allowNull: true
+    type: String,
+    default: null
   },
   account_type: {
-    type: DataTypes.STRING(30),
-    allowNull: false
+    type: String,
+    required: true
   },
   is_system_role: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false,
-    field: 'is_system_role'
+    type: Boolean,
+    default: false
   },
   is_active: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true
+    type: Boolean,
+    default: true
   },
   priority: {
-    type: DataTypes.INTEGER,
-    defaultValue: 100
+    type: Number,
+    default: 100
   },
   parent_role_id: {
-    type: DataTypes.UUID,
-    allowNull: true
+    type: String,
+    default: null
   },
   created_by: {
-    type: DataTypes.UUID,
-    allowNull: true
+    type: String,
+    default: null
   },
   updated_by: {
-    type: DataTypes.UUID,
-    allowNull: true
+    type: String,
+    default: null
   }
 }, {
-  tableName: 'roles',
-  timestamps: true,
-  createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  collection: 'roles',
+  timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
 });
 
-module.exports = Role;
+attachCommon(roleSchema);
+
+module.exports = mongoose.models.Role || mongoose.model('Role', roleSchema);

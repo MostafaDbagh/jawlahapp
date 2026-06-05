@@ -44,8 +44,10 @@ const startServer = async () => {
       console.log('🔄 Starting server without database connection (models not loaded)...');
     }
     
-    // Start server
-    const server = app.listen(PORT, () => {
+    // Start server. Bind explicitly to 0.0.0.0 (IPv4, all interfaces) so the
+    // iOS simulator / devices can reach it via localhost (127.0.0.1) and the
+    // LAN IP — a default bind ends up IPv6-only (::1) on macOS.
+    const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
       console.log(`📧 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🔗 Health check: http://localhost:${PORT}/health`);

@@ -1,25 +1,26 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
+const mongoose = require('mongoose');
+const { attachCommon } = require('./baseSchema');
 
-const AccountType = sequelize.define('AccountType', {
+const accountTypeSchema = new mongoose.Schema({
   type_code: {
-    type: DataTypes.STRING(30),
-    primaryKey: true,
-    field: 'type_code'
+    type: String,
+    required: true,
+    unique: true,
+    index: true
   },
   type_name: {
-    type: DataTypes.STRING(100),
-    allowNull: false
+    type: String,
+    required: true
   },
   description: {
-    type: DataTypes.TEXT,
-    allowNull: true
+    type: String,
+    default: null
   }
 }, {
-  tableName: 'account_types',
-  timestamps: true,
-  createdAt: 'created_at',
-  updatedAt: false
+  collection: 'account_types',
+  timestamps: { createdAt: 'created_at', updatedAt: false }
 });
 
-module.exports = AccountType;
+attachCommon(accountTypeSchema);
+
+module.exports = mongoose.models.AccountType || mongoose.model('AccountType', accountTypeSchema);

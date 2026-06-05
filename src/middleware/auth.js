@@ -24,7 +24,7 @@ const authenticateToken = async (req, res, next) => {
     }
 
     // Check if user still exists and is active
-    const user = await User.findByPk(result.payload.userId);
+    const user = await User.findOne({ user_id: result.payload.userId });
     if (!user || !user.is_active) {
       return res.status(401).json({
         success: false,

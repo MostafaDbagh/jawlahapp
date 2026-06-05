@@ -1,6 +1,7 @@
-const { Product, Branch, Subcategory, ProductVariation, Offer } = require('../models');
+const { Product, Branch, Subcategory, ProductVariation } = require('../models');
 const ResponseHelper = require('../utils/responseHelper');
-const { Op } = require('sequelize');
+
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 class ProductController {
   // GET /branches/:id/products - List products for a branch
@@ -18,53 +19,37 @@ class ProductController {
       } = req.query;
 
       const offset = (page - 1) * limit;
-      const whereClause = { branch_id, is_active: true };
+      const query = { branch_id, is_active: true };
 
       // Filter by subcategory
       if (subcategory_id) {
-        whereClause.subcategory_id = subcategory_id;
+        query.subcategory_id = subcategory_id;
       }
 
       // Search by name or description
       if (search) {
-        whereClause[Op.or] = [
-          { name: { [Op.iLike]: `%${search}%` } },
-          { description: { [Op.iLike]: `%${search}%` } }
-        ];
+        const regex = { $regex: escapeRegex(search), $options: 'i' };
+        query.$or = [{ name: regex }, { description: regex }];
       }
 
       // Price range filter
       if (min_price) {
-        whereClause.price = { ...whereClause.price, [Op.gte]: parseFloat(min_price) };
+        query.price = { ...query.price, $gte: parseFloat(min_price) };
       }
       if (max_price) {
-        whereClause.price = { ...whereClause.price, [Op.lte]: parseFloat(max_price) };
+        query.price = { ...query.price, $lte: parseFloat(max_price) };
       }
 
-      const { count, rows: products } = await Product.findAndCountAll({
-        where: whereClause,
-        include: [
-          {
-            model: Branch,
-            as: 'branch',
-            attributes: ['id', 'name', 'city']
-          },
-          {
-            model: Subcategory,
-            as: 'subcategory',
-            attributes: ['id', 'name', 'image'],
-            required: false
-          },
-          {
-            model: ProductVariation,
-            as: 'variations',
-            attributes: ['id', 'attributes', 'price', 'image']
-          }
-        ],
-        order: [['created_at', 'DESC']],
-        limit: parseInt(limit),
-        offset: parseInt(offset)
-      });
+      const [products, count] = await Promise.all([
+        Product.find(query)
+          .populate({ path: 'branch', select: 'id name city' })
+          .populate({ path: 'subcategory', select: 'id name image' })
+          .populate({ path: 'variations', select: 'id attributes price image' })
+          .sort({ created_at: -1 })
+          .skip(parseInt(offset))
+          .limit(parseInt(limit)),
+        Product.countDocuments(query)
+      ]);
 
       // Add final price and offers for each product
       const productsWithDetails = await Promise.all(
@@ -86,7 +71,7 @@ class ProductController {
         })
       );
 
-      const filteredProducts = productsWithDetails.filter(product => product !== null);
+      const filteredProducts = productsWithDetails.filter((product) => product !== null);
 
       return ResponseHelper.list(res, filteredProducts, count, 'Branch products retrieved successfully');
     } catch (error) {
@@ -102,42 +87,31 @@ class ProductController {
       const { page = 1, limit = 20, search, min_price, max_price } = req.query;
 
       const offset = (page - 1) * limit;
-      const whereClause = { branch_id, subcategory_id: sub_id, is_active: true };
+      const query = { branch_id, subcategory_id: sub_id, is_active: true };
 
       // Search filter
       if (search) {
-        whereClause[Op.or] = [
-          { name: { [Op.iLike]: `%${search}%` } },
-          { description: { [Op.iLike]: `%${search}%` } }
-        ];
+        const regex = { $regex: escapeRegex(search), $options: 'i' };
+        query.$or = [{ name: regex }, { description: regex }];
       }
 
       // Price range filter
       if (min_price) {
-        whereClause.price = { ...whereClause.price, [Op.gte]: parseFloat(min_price) };
+        query.price = { ...query.price, $gte: parseFloat(min_price) };
       }
       if (max_price) {
-        whereClause.price = { ...whereClause.price, [Op.lte]: parseFloat(max_price) };
+        query.price = { ...query.price, $lte: parseFloat(max_price) };
       }
 
-      const { count, rows: products } = await Product.findAndCountAll({
-        where: whereClause,
-        include: [
-          {
-            model: Subcategory,
-            as: 'subcategory',
-            attributes: ['id', 'name', 'image']
-          },
-          {
-            model: ProductVariation,
-            as: 'variations',
-            attributes: ['id', 'attributes', 'price', 'image']
-          }
-        ],
-        order: [['created_at', 'DESC']],
-        limit: parseInt(limit),
-        offset: parseInt(offset)
-      });
+      const [products, count] = await Promise.all([
+        Product.find(query)
+          .populate({ path: 'subcategory', select: 'id name image' })
+          .populate({ path: 'variations', select: 'id attributes price image' })
+          .sort({ created_at: -1 })
+          .skip(parseInt(offset))
+          .limit(parseInt(limit)),
+        Product.countDocuments(query)
+      ]);
 
       // Add final price for each product
       const productsWithDetails = await Promise.all(
@@ -163,27 +137,10 @@ class ProductController {
     try {
       const { id } = req.params;
 
-      const product = await Product.findOne({
-        where: { id, is_active: true },
-        include: [
-          {
-            model: Branch,
-            as: 'branch',
-            attributes: ['id', 'name', 'city', 'address']
-          },
-          {
-            model: Subcategory,
-            as: 'subcategory',
-            attributes: ['id', 'name', 'image'],
-            required: false
-          },
-          {
-            model: ProductVariation,
-            as: 'variations',
-            attributes: ['id', 'attributes', 'price', 'image']
-          }
-        ]
-      });
+      const product = await Product.findOne({ id, is_active: true })
+        .populate({ path: 'branch', select: 'id name city address' })
+        .populate({ path: 'subcategory', select: 'id name image' })
+        .populate({ path: 'variations', select: 'id attributes price image' });
 
       if (!product) {
         return ResponseHelper.error(res, 'Product not found', 404);
@@ -213,16 +170,14 @@ class ProductController {
       const { subcategory_id, name, description, price, image, variations } = req.body;
 
       // Verify branch exists
-      const branch = await Branch.findByPk(branch_id);
+      const branch = await Branch.findOne({ id: branch_id });
       if (!branch) {
         return ResponseHelper.error(res, 'Branch not found', 404);
       }
 
       // Verify subcategory exists if provided
       if (subcategory_id) {
-        const subcategory = await Subcategory.findOne({
-          where: { id: subcategory_id, branch_id }
-        });
+        const subcategory = await Subcategory.findOne({ id: subcategory_id, branch_id });
         if (!subcategory) {
           return ResponseHelper.error(res, 'Subcategory not found for this branch', 404);
         }
@@ -239,36 +194,20 @@ class ProductController {
 
       // Add variations if provided
       if (variations && variations.length > 0) {
-        const variationData = variations.map(variation => ({
+        const variationData = variations.map((variation) => ({
           product_id: product.id,
           attributes: variation.attributes,
           price: variation.price,
           image: variation.image
         }));
 
-        await ProductVariation.bulkCreate(variationData);
+        await ProductVariation.insertMany(variationData);
       }
 
-      const createdProduct = await Product.findByPk(product.id, {
-        include: [
-          {
-            model: Branch,
-            as: 'branch',
-            attributes: ['id', 'name', 'city']
-          },
-          {
-            model: Subcategory,
-            as: 'subcategory',
-            attributes: ['id', 'name', 'image'],
-            required: false
-          },
-          {
-            model: ProductVariation,
-            as: 'variations',
-            attributes: ['id', 'attributes', 'price', 'image']
-          }
-        ]
-      });
+      const createdProduct = await Product.findOne({ id: product.id })
+        .populate({ path: 'branch', select: 'id name city' })
+        .populate({ path: 'subcategory', select: 'id name image' })
+        .populate({ path: 'variations', select: 'id attributes price image' });
 
       return ResponseHelper.item(res, createdProduct, 'Product created successfully', 201);
     } catch (error) {
@@ -283,33 +222,17 @@ class ProductController {
       const { id } = req.params;
       const updateData = req.body;
 
-      const product = await Product.findByPk(id);
+      const product = await Product.findOne({ id });
       if (!product) {
         return ResponseHelper.error(res, 'Product not found', 404);
       }
 
       await product.update(updateData);
 
-      const updatedProduct = await Product.findByPk(id, {
-        include: [
-          {
-            model: Branch,
-            as: 'branch',
-            attributes: ['id', 'name', 'city']
-          },
-          {
-            model: Subcategory,
-            as: 'subcategory',
-            attributes: ['id', 'name', 'image'],
-            required: false
-          },
-          {
-            model: ProductVariation,
-            as: 'variations',
-            attributes: ['id', 'attributes', 'price', 'image']
-          }
-        ]
-      });
+      const updatedProduct = await Product.findOne({ id })
+        .populate({ path: 'branch', select: 'id name city' })
+        .populate({ path: 'subcategory', select: 'id name image' })
+        .populate({ path: 'variations', select: 'id attributes price image' });
 
       return ResponseHelper.item(res, updatedProduct, 'Product updated successfully');
     } catch (error) {
@@ -323,7 +246,7 @@ class ProductController {
     try {
       const { id } = req.params;
 
-      const product = await Product.findByPk(id);
+      const product = await Product.findOne({ id });
       if (!product) {
         return ResponseHelper.error(res, 'Product not found', 404);
       }
@@ -343,7 +266,7 @@ class ProductController {
       const { id: product_id } = req.params;
       const { attributes, price, image } = req.body;
 
-      const product = await Product.findByPk(product_id);
+      const product = await Product.findOne({ id: product_id });
       if (!product) {
         return ResponseHelper.error(res, 'Product not found', 404);
       }
@@ -368,7 +291,7 @@ class ProductController {
       const { id } = req.params;
       const updateData = req.body;
 
-      const variation = await ProductVariation.findByPk(id);
+      const variation = await ProductVariation.findOne({ id });
       if (!variation) {
         return ResponseHelper.error(res, 'Product variation not found', 404);
       }
@@ -387,7 +310,7 @@ class ProductController {
     try {
       const { id } = req.params;
 
-      const variation = await ProductVariation.findByPk(id);
+      const variation = await ProductVariation.findOne({ id });
       if (!variation) {
         return ResponseHelper.error(res, 'Product variation not found', 404);
       }
