@@ -54,6 +54,18 @@ class CartController {
 
       const cart = await getOrCreateCart(req.user.user_id);
 
+      // Single-restaurant cart: an order can only contain items from one branch.
+      // Adding a product from a different restaurant resets the previous cart.
+      let cartReset = false;
+      if (
+        cart.items.length > 0 &&
+        product.branch_id != null &&
+        String(cart.items[0].branch_id) !== String(product.branch_id)
+      ) {
+        cart.items = [];
+        cartReset = true;
+      }
+
       // Merge with an existing identical line (same product + variation).
       const existing = cart.items.find(
         (it) => it.product_id === product_id && it.variation_id === variation_id
@@ -74,7 +86,13 @@ class CartController {
       }
 
       await cart.save();
-      res.json(ResponseHelper.success(serialize(cart), 'Item added to cart', 1));
+      res.json(
+        ResponseHelper.success(
+          { ...serialize(cart), cart_reset: cartReset },
+          cartReset ? 'Started a new cart from this restaurant' : 'Item added to cart',
+          1
+        )
+      );
     } catch (error) {
       console.error('Add cart item error:', error);
       res.status(500).json(ResponseHelper.error('Failed to add item', error.message, 0));
