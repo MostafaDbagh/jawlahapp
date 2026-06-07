@@ -1,6 +1,7 @@
 const { Vendor, Branch } = require('../models');
 const ResponseHelper = require('../utils/responseHelper');
 
+const ADMIN_TYPES = ['PLATFORM_OWNER', 'PLATFORM_ADMIN'];
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 class VendorController {
@@ -25,10 +26,14 @@ class VendorController {
         query.$or = [{ name: regex }, { about: regex }];
       }
 
-      // Active filter
-      if (is_active !== undefined) {
-        query.is_active = is_active === 'true';
-      }
+      // Active filter. This is the customer-facing list, so default to active
+      // only — a blocked (is_active=false) restaurant must not appear to
+      // customers. Admins browse every state via GET /admin/vendors.
+      query.is_active = is_active !== undefined ? is_active === 'true' : true;
+
+      // Never expose restaurants still awaiting approval or rejected. ($nin
+      // matches legacy docs missing the field, which are treated as approved.)
+      query.approval_status = { $nin: ['pending', 'rejected'] };
 
       const sort = { [sort_by]: sort_order.toUpperCase() === 'ASC' ? 1 : -1 };
 
@@ -104,6 +109,13 @@ class VendorController {
         vendorData.owner_user_id = req.user.user_id;
       }
 
+      // A restaurant onboarded by its owner needs admin approval before it goes
+      // live; one created by an admin is approved immediately. Either way the
+      // client cannot set this field itself.
+      const isAdmin = req.user && ADMIN_TYPES.includes(req.user.account_type);
+      vendorData.approval_status = isAdmin ? 'approved' : 'pending';
+      vendorData.rejection_reason = null;
+
       const vendor = await Vendor.create(vendorData);
 
       return ResponseHelper.item(res, vendor, 'Vendor created successfully', 201);
@@ -164,15 +176,66 @@ class VendorController {
     }
   }
 
-  // PUT /vendors/:id - Update vendor
+  // PATCH /vendors/:id/approve - Admin: approve a pending restaurant request
+  static async approveVendor(req, res) {
+    try {
+      const { id } = req.params;
+      const vendor = await Vendor.findOne({ id });
+      if (!vendor) {
+        return ResponseHelper.error(res, 'Vendor not found', 404);
+      }
+      await vendor.update({ approval_status: 'approved', rejection_reason: null, is_active: true });
+      return ResponseHelper.item(res, vendor, 'Restaurant approved successfully');
+    } catch (error) {
+      console.error('Error approving vendor:', error);
+      return ResponseHelper.error(res, 'Failed to approve restaurant', 500);
+    }
+  }
+
+  // PATCH /vendors/:id/reject - Admin: reject a pending restaurant request
+  static async rejectVendor(req, res) {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body || {};
+      const vendor = await Vendor.findOne({ id });
+      if (!vendor) {
+        return ResponseHelper.error(res, 'Vendor not found', 404);
+      }
+      await vendor.update({ approval_status: 'rejected', rejection_reason: reason || null });
+      return ResponseHelper.item(res, vendor, 'Restaurant request rejected');
+    } catch (error) {
+      console.error('Error rejecting vendor:', error);
+      return ResponseHelper.error(res, 'Failed to reject restaurant', 500);
+    }
+  }
+
+  // PUT /vendors/:id - Update vendor (owner of the restaurant or an admin only)
   static async updateVendor(req, res) {
     try {
       const { id } = req.params;
-      const updateData = req.body;
 
       const vendor = await Vendor.findOne({ id });
       if (!vendor) {
         return ResponseHelper.error(res, 'Vendor not found', 404);
+      }
+
+      // Authorization: only an admin or the restaurant's own owner may edit it.
+      const isAdmin = req.user && ADMIN_TYPES.includes(req.user.account_type);
+      const isOwner = req.user && vendor.owner_user_id && vendor.owner_user_id === req.user.user_id;
+      if (!isAdmin && !isOwner) {
+        return ResponseHelper.error(res, 'You are not allowed to edit this restaurant', 403);
+      }
+
+      // Explicit allow-list — never apply req.body wholesale. The approval state
+      // (approval_status / rejection_reason), block state (is_active) and
+      // ownership (owner_user_id) are changed ONLY through the dedicated
+      // approve/reject/block/unblock admin endpoints, so a restaurant owner
+      // cannot self-approve or take over another restaurant via this route.
+      const editable = ['name', 'type', 'image', 'about'];
+      if (isAdmin) editable.push('subscript_date');
+      const updateData = {};
+      for (const key of editable) {
+        if (req.body[key] !== undefined) updateData[key] = req.body[key];
       }
 
       await vendor.update(updateData);
@@ -208,7 +271,10 @@ class VendorController {
     try {
       const { limit = 20 } = req.query;
 
-      const vendors = await Vendor.find({ is_active: true }).limit(parseInt(limit));
+      const vendors = await Vendor.find({
+        is_active: true,
+        approval_status: { $nin: ['pending', 'rejected'] }
+      }).limit(parseInt(limit));
 
       const vendorsWithRatings = await Promise.all(
         vendors.map(async (vendor) => {

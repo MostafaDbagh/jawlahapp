@@ -19,6 +19,8 @@ const Promotion = require('./Promotion');
 const Notification = require('./Notification');
 const Cart = require('./Cart');
 const Order = require('./Order');
+const Complaint = require('./Complaint');
+const ContactRequest = require('./ContactRequest');
 
 module.exports = {
   User,
@@ -38,5 +40,7 @@ module.exports = {
   Promotion,
   Notification,
   Cart,
-  Order
+  Order,
+  Complaint,
+  ContactRequest
 };

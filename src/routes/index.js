@@ -18,6 +18,11 @@ const offerRoutes = require('./offer/offerRoutes');
 const notificationRoutes = require('./notification/notificationRoutes');
 const cartRoutes = require('./cart/cartRoutes');
 const orderRoutes = require('./order/orderRoutes');
+const driverRoutes = require('./driver/driverRoutes');
+const adminRoutes = require('./admin/adminRoutes');
+const complaintRoutes = require('./complaint/complaintRoutes');
+const contactRoutes = require('./contact/contactRoutes');
+const promotionRoutes = require('./promotion/promotionRoutes');
 const ResponseHelper = require('../utils/responseHelper');
 
 // Health check route
@@ -44,6 +49,11 @@ router.use('/api/v1/offers', offerRoutes);
 router.use('/api/v1/notifications', notificationRoutes);
 router.use('/api/v1/cart', cartRoutes);
 router.use('/api/v1/orders', orderRoutes);
+router.use('/api/v1/driver', driverRoutes);
+router.use('/api/v1/admin', adminRoutes);
+router.use('/api/v1/complaints', complaintRoutes);
+router.use('/api/v1/contact', contactRoutes);
+router.use('/api/v1/promotions', promotionRoutes);
 
 // Mobile app: POST /api/v1/saveToken (FCM / Firebase token + optional device info)
 router.post(

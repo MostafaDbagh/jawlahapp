@@ -14,8 +14,9 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
-    const result = jwtService.verifyToken(token);
-    
+    // Require an ACCESS token here — refresh/password_reset tokens are rejected.
+    const result = jwtService.verifyToken(token, 'access');
+
     if (!result.success) {
       return res.status(401).json({
         success: false,
@@ -41,6 +42,27 @@ const authenticateToken = async (req, res, next) => {
       success: false,
       message: 'Authentication failed'
     });
+  }
+};
+
+// Like authenticateToken, but never blocks: if a valid token is present it
+// attaches req.user, otherwise it continues as an anonymous request. Used for
+// endpoints that accept both (e.g. public "Contact us" with optional prefill).
+const optionalAuth = async (req, res, next) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return next();
+
+    const result = jwtService.verifyToken(token, 'access');
+    if (result.success) {
+      const user = await User.findOne({ user_id: result.payload.userId });
+      if (user && user.is_active) req.user = user;
+    }
+    next();
+  } catch (error) {
+    // Optional auth must not break the request on error.
+    next();
   }
 };
 
@@ -125,6 +147,7 @@ const requireAccountType = (accountTypes) => {
 
 module.exports = {
   authenticateToken,
+  optionalAuth,
   requireVerification,
   requireRole,
   requireAccountType

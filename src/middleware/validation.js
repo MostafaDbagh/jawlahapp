@@ -1,42 +1,56 @@
 const { body, validationResult } = require('express-validator');
 const ResponseHelper = require('../utils/responseHelper');
 
-// Validation rules for user registration
+// Validation rules for user registration.
+// Two account shapes share this endpoint:
+//  - email-based (web admin): supplies email + a strict username.
+//  - phone-based (mobile app): no email; sends the full international phone in
+//    phone_number (e.g. +963949112178) and the display name in `username`.
+// Rules that only make sense for email accounts are enforced conditionally so
+// the phone sign-up payload is accepted without weakening the web flow.
 const validateRegistration = [
   body('username')
+    .optional()
     .trim()
-    .isLength({ min: 3, max: 50 })
-    .withMessage('Username must be between 3 and 50 characters')
-    .matches(/^[a-zA-Z0-9_]+$/)
-    .withMessage('Username can only contain letters, numbers, and underscores'),
-  
+    .isLength({ max: 100 })
+    .withMessage('Username is too long')
+    // Keep the strict username rule for email-based (web) accounts only; phone
+    // sign-ups pass a human display name here, which the controller turns into
+    // full_name + a generated username.
+    .custom((value, { req }) => {
+      if (req.body.email) {
+        if (value === undefined || !/^[a-zA-Z0-9_]{3,50}$/.test(value)) {
+          throw new Error('Username can only contain letters, numbers, and underscores');
+        }
+      }
+      return true;
+    }),
+
   body('email')
+    .optional()
     .isEmail()
     .normalizeEmail()
     .withMessage('Please provide a valid email address'),
-  
+
   body('full_name')
     .optional()
     .trim()
     .isLength({ min: 2, max: 100 })
-    .withMessage('Full name must be between 2 and 100 characters')
-    .matches(/^[a-zA-Z\s'-]+$/)
-    .withMessage('Full name can only contain letters, spaces, hyphens, and apostrophes'),
-  
+    .withMessage('Full name must be between 2 and 100 characters'),
+
   body('country_code')
     .notEmpty()
     .isLength({ min: 1, max: 5 })
     .withMessage('Country code is required and must be between 1 and 5 characters')
     .matches(/^\+?\d+$/)
     .withMessage('Country code must contain only numbers and optional + prefix'),
-  
+
   body('phone_number')
     .notEmpty()
-    .isLength({ min: 7, max: 15 })
-    .withMessage('Phone number is required and must be between 7 and 15 digits')
-    .matches(/^\d+$/)
-    .withMessage('Phone number must contain only numbers'),
-  
+    .withMessage('Phone number is required')
+    .matches(/^\+?\d{7,15}$/)
+    .withMessage('Phone number must be 7-15 digits and may start with +'),
+
   body('date_of_birth')
     .optional()
     .isISO8601()
@@ -61,37 +75,84 @@ const validateRegistration = [
   
   body('account_type')
     .optional()
-    .isIn(['CUSTOMER', 'DRIVER', 'SERVICE_PROVIDER_OWNER', 'SERVICE_PROVIDER_ADMIN', 'PLATFORM_OWNER', 'PLATFORM_ADMIN', 'CUSTOMER_SERVICE'])
-    .withMessage('Invalid account type')
+    // SECURITY: public registration may create an ordinary CUSTOMER or a
+    // restaurant owner (SERVICE_PROVIDER_OWNER — the web merchant portal). An
+    // owner is still unprivileged: its restaurants stay `pending`/hidden until an
+    // admin approves them. Any privileged role (platform staff, drivers,
+    // service-provider admins) is rejected here with a clear 400; the controller
+    // additionally clamps to these two values. Elevated accounts are out-of-band.
+    .customSanitizer((value) => (typeof value === 'string' ? value.toUpperCase() : value))
+    .isIn(['CUSTOMER', 'SERVICE_PROVIDER_OWNER'])
+    .withMessage('Public registration only supports customer or restaurant-owner accounts')
 ];
 
-// Validation rules for user login
+// Validation rules for user login. Accepts either an email (web) or a phone
+// number (mobile); at least one identifier plus the password is required.
 const validateLogin = [
   body('email')
+    .optional()
     .isEmail()
     .normalizeEmail()
     .withMessage('Please provide a valid email address'),
-  
+
+  body('phone')
+    .optional()
+    .matches(/^\+?[1-9]\d{1,14}$/)
+    .withMessage('Invalid phone number format'),
+
+  body().custom((_value, { req }) => {
+    if (!req.body.email && !req.body.phone) {
+      throw new Error('Email or phone number is required');
+    }
+    return true;
+  }),
+
   body('password_hash')
     .notEmpty()
     .withMessage('Password is required')
 ];
 
-// Validation rules for password reset request
+// Validation rules for password reset request (email for web, phone for mobile)
 const validatePasswordResetRequest = [
   body('email')
-    .isEmail()
-    .normalizeEmail()
-    .withMessage('Please provide a valid email address')
-];
-
-// Validation rules for password reset
-const validatePasswordReset = [
-  body('email')
+    .optional()
     .isEmail()
     .normalizeEmail()
     .withMessage('Please provide a valid email address'),
-  
+
+  body('phone')
+    .optional()
+    .matches(/^\+?[1-9]\d{1,14}$/)
+    .withMessage('Invalid phone number format'),
+
+  body().custom((_value, { req }) => {
+    if (!req.body.email && !req.body.phone) {
+      throw new Error('Email or phone number is required');
+    }
+    return true;
+  })
+];
+
+// Validation rules for password reset (email for web, phone for mobile)
+const validatePasswordReset = [
+  body('email')
+    .optional()
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please provide a valid email address'),
+
+  body('phone')
+    .optional()
+    .matches(/^\+?[1-9]\d{1,14}$/)
+    .withMessage('Invalid phone number format'),
+
+  body().custom((_value, { req }) => {
+    if (!req.body.email && !req.body.phone) {
+      throw new Error('Email or phone number is required');
+    }
+    return true;
+  }),
+
   body('otp')
     .isLength({ min: 6, max: 6 })
     .isNumeric()
@@ -244,17 +305,22 @@ const validateVendorCreate = [
     .withMessage('Vendor name must be between 1 and 255 characters')
     .notEmpty()
     .withMessage('Vendor name is required'),
-  
+
+  body('type')
+    .optional()
+    .isIn(['restaurant', 'cafe', 'bakery'])
+    .withMessage('type must be one of: restaurant, cafe, bakery'),
+
   body('image')
     .optional()
     .isURL()
     .withMessage('Image must be a valid URL'),
-  
+
   body('about')
     .optional()
     .isLength({ max: 2000 })
     .withMessage('About description must not exceed 2000 characters'),
-  
+
   body('work_time')
     .optional()
     .custom((value) => {
@@ -306,12 +372,17 @@ const validateVendorUpdate = [
     .withMessage('Vendor name must be between 1 and 255 characters')
     .notEmpty()
     .withMessage('Vendor name cannot be empty'),
-  
+
+  body('type')
+    .optional()
+    .isIn(['restaurant', 'cafe', 'bakery'])
+    .withMessage('type must be one of: restaurant, cafe, bakery'),
+
   body('image')
     .optional()
     .isURL()
     .withMessage('Image must be a valid URL'),
-  
+
   body('about')
     .optional()
     .isLength({ max: 2000 })
@@ -435,7 +506,13 @@ const validateRequestOTPLogin = [
     .notEmpty()
     .withMessage('Phone number is required')
     .matches(/^\+?[1-9]\d{1,14}$/)
-    .withMessage('Invalid phone number format. Please include country code (e.g., +1234567890)')
+    .withMessage('Invalid phone number format. Please include country code (e.g., +1234567890)'),
+  // Optional: sent only from the sign-up screen so new accounts get a display name.
+  body('fullName')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('Full name is too long')
 ];
 
 const validateVerifyOTPLogin = [

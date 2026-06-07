@@ -2,7 +2,9 @@ const Order = require('../models/Order');
 const Cart = require('../models/Cart');
 const Branch = require('../models/Branch');
 const Vendor = require('../models/Vendor');
+const Promotion = require('../models/Promotion');
 const ResponseHelper = require('../utils/responseHelper');
+const dispatchService = require('../services/dispatchService');
 
 const ADMIN_TYPES = ['PLATFORM_OWNER', 'PLATFORM_ADMIN'];
 
@@ -22,6 +24,22 @@ function lineTotal(it) {
   return (Number(it.unit_price) + optionsTotal) * Number(it.qty);
 }
 
+// Discount for an already-claimed promo. Computed directly (not via the model's
+// calculateDiscount, which re-runs canUse) because the atomic claim has just
+// incremented used_count — which would make isValid() report false for the very
+// last allowed redemption.
+function promoDiscount(promo, amount) {
+  if (promo.type === 'percentage') {
+    let d = amount * (Number(promo.value) / 100);
+    if (promo.max_discount) d = Math.min(d, Number(promo.max_discount));
+    return Math.round(d * 100) / 100;
+  }
+  if (promo.type === 'fixed') {
+    return Math.round(Number(promo.value) * 100) / 100;
+  }
+  return 0; // free_delivery carries no line discount
+}
+
 class OrderController {
   // POST /orders  — checkout from the user's cart (Cash on Delivery)
   async createOrder(req, res) {
@@ -31,7 +49,8 @@ class OrderController {
         delivery_address = null,
         delivery_note = null,
         leave_at_door = false,
-        dont_ring_bell = false
+        dont_ring_bell = false,
+        promo_code = null
       } = req.body;
 
       const cart = await Cart.findOne({ user_id: userId });
@@ -46,11 +65,52 @@ class OrderController {
         const branch = await Branch.findOne({ id: branchId });
         if (branch) {
           deliveryFee = branch.free_delivery ? 0 : Number(branch.delivery_fee) || 0;
+          // Snapshot the restaurant name onto the order so the customer's order
+          // list/details and the admin board show it without a join.
+          const vendor = await Vendor.findOne({ id: branch.vendor_id }).select('name').lean();
+          if (vendor) vendorName = vendor.name;
         }
       }
 
       const subtotal = cart.items.reduce((sum, it) => sum + lineTotal(it), 0);
-      const discount = 0;
+
+      // Apply a promo code when supplied and currently usable. The redemption is
+      // claimed atomically so a usage_limit can't be exceeded under concurrent
+      // checkouts; unknown/expired/exhausted codes are silently ignored (discount
+      // stays 0) so checkout never blocks.
+      let discount = 0;
+      let appliedPromo = null;
+      if (promo_code) {
+        const now = new Date();
+        const code = String(promo_code).trim().toUpperCase();
+        const claimed = await Promotion.findOneAndUpdate(
+          {
+            code,
+            is_active: true,
+            start_date: { $lte: now },
+            end_date: { $gte: now },
+            $or: [
+              { usage_limit: null },
+              { $expr: { $lt: ['$used_count', '$usage_limit'] } }
+            ]
+          },
+          { $inc: { used_count: 1 } },
+          { new: true }
+        );
+        if (claimed) {
+          if (claimed.min_order_amount && subtotal < claimed.min_order_amount) {
+            // Order is below the code's minimum — release the redemption.
+            await Promotion.updateOne({ id: claimed.id }, { $inc: { used_count: -1 } });
+          } else if (claimed.type === 'free_delivery') {
+            deliveryFee = 0;
+            appliedPromo = claimed;
+          } else {
+            discount = promoDiscount(claimed, subtotal);
+            appliedPromo = claimed;
+          }
+        }
+      }
+
       const total = Math.max(0, subtotal + deliveryFee - discount);
 
       const order = await Order.create({
@@ -68,7 +128,8 @@ class OrderController {
         })),
         subtotal: Math.round(subtotal * 100) / 100,
         delivery_fee: deliveryFee,
-        discount,
+        discount: Math.round(discount * 100) / 100,
+        promo_code: appliedPromo ? appliedPromo.code : null,
         total: Math.round(total * 100) / 100,
         currency: 'SYP',
         payment_method: 'COD',
@@ -253,6 +314,14 @@ class OrderController {
         { status, label: `Status: ${status}`, at: new Date(), done: true }
       ];
       await order.save();
+
+      // Smart dispatch: once an order is ready, route it to the best driver.
+      // Fire-and-forget — a dispatch failure must never break the status update.
+      if (status === 'ready') {
+        dispatchService
+          .dispatchOrder(order.order_id)
+          .catch((e) => console.error('dispatch hook error:', e));
+      }
 
       res.json(ResponseHelper.success(order, 'Order status updated', 1));
     } catch (error) {

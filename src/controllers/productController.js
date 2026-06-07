@@ -1,7 +1,24 @@
-const { Product, Branch, Subcategory, ProductVariation } = require('../models');
+const { Product, Branch, Subcategory, ProductVariation, Vendor } = require('../models');
 const ResponseHelper = require('../utils/responseHelper');
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const ADMIN_TYPES = ['PLATFORM_OWNER', 'PLATFORM_ADMIN'];
+
+// Whether the user may manage products on a branch: a platform admin, or the
+// owner of the restaurant the branch belongs to.
+async function canManageBranch(user, branchId) {
+  if (!user || !branchId) return false;
+  if (ADMIN_TYPES.includes(user.account_type)) return true;
+  const branch = await Branch.findOne({ id: branchId }).select('vendor_id').lean();
+  if (!branch) return false;
+  const vendor = await Vendor.findOne({ id: branch.vendor_id }).select('owner_user_id').lean();
+  return !!(vendor && vendor.owner_user_id && vendor.owner_user_id === user.user_id);
+}
+
+// Fields a client may set on a product. Excludes branch_id so a product can
+// never be moved to another branch (or restaurant) via the update route.
+const PRODUCT_EDITABLE = ['name', 'description', 'price', 'image', 'subcategory_id', 'is_active'];
 
 class ProductController {
   // GET /branches/:id/products - List products for a branch
@@ -175,6 +192,11 @@ class ProductController {
         return ResponseHelper.error(res, 'Branch not found', 404);
       }
 
+      // Only the branch's own restaurant (or an admin) may add products to it.
+      if (!(await canManageBranch(req.user, branch_id))) {
+        return ResponseHelper.error(res, 'You are not allowed to add products to this branch', 403);
+      }
+
       // Verify subcategory exists if provided
       if (subcategory_id) {
         const subcategory = await Subcategory.findOne({ id: subcategory_id, branch_id });
@@ -220,13 +242,22 @@ class ProductController {
   static async updateProduct(req, res) {
     try {
       const { id } = req.params;
-      const updateData = req.body;
 
       const product = await Product.findOne({ id });
       if (!product) {
         return ResponseHelper.error(res, 'Product not found', 404);
       }
 
+      // Only the owning restaurant (or an admin) may edit this product.
+      if (!(await canManageBranch(req.user, product.branch_id))) {
+        return ResponseHelper.error(res, 'You are not allowed to edit this product', 403);
+      }
+
+      // Apply only whitelisted fields — never req.body wholesale.
+      const updateData = {};
+      for (const key of PRODUCT_EDITABLE) {
+        if (req.body[key] !== undefined) updateData[key] = req.body[key];
+      }
       await product.update(updateData);
 
       const updatedProduct = await Product.findOne({ id })
@@ -249,6 +280,11 @@ class ProductController {
       const product = await Product.findOne({ id });
       if (!product) {
         return ResponseHelper.error(res, 'Product not found', 404);
+      }
+
+      // Only the owning restaurant (or an admin) may remove this product.
+      if (!(await canManageBranch(req.user, product.branch_id))) {
+        return ResponseHelper.error(res, 'You are not allowed to delete this product', 403);
       }
 
       await product.update({ is_active: false });

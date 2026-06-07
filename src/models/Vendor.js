@@ -22,6 +22,14 @@ const vendorSchema = new mongoose.Schema({
     trim: true,
     maxlength: 255
   },
+  // What kind of place this is. Set by the owner during onboarding; used for
+  // display/filtering. Legacy/seeded vendors default to `restaurant`.
+  type: {
+    type: String,
+    enum: ['restaurant', 'cafe', 'bakery'],
+    default: 'restaurant',
+    index: true
+  },
   image: {
     type: String,
     default: null
@@ -39,6 +47,19 @@ const vendorSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
     index: true
+  },
+  // Onboarding/approval workflow. A restaurant created from the owner web portal
+  // starts `pending` and is hidden from customers until an admin approves it.
+  // Legacy/seeded vendors default to `approved` so they stay visible.
+  approval_status: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'approved',
+    index: true
+  },
+  rejection_reason: {
+    type: String,
+    default: null
   }
 }, {
   collection: 'vendors',

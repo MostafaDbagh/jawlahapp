@@ -19,6 +19,7 @@ const {
   Role,
   Permission
 } = require('../models');
+const { driverUsers, mockDriverSnapshot, buildDriverJobBoardOrders } = require('./driverMockData');
 
 // ---------------------------------------------------------------------------
 // Jawlah seed — Damascus, Syria. Food-focused catalog, Cash-on-Delivery only.
@@ -140,9 +141,11 @@ const seedDatabase = async () => {
         country_code: '+963', phone_number: '0944444444', gender: 'female',
         password_hash: 'seedphonelogin', salt: 'seedsalt', account_type: 'CUSTOMER',
         is_active: true, phone_verified: true, preferred_language: 'ar'
-      }
+      },
+      // Driver account(s) live in driverMockData.js.
+      ...driverUsers
     ]);
-    console.log('👥 Created 4 users');
+    console.log(`👥 Created ${users.length} users (incl. ${driverUsers.length} driver)`);
 
     // Categories (the food categories shown on the home screen)
     const categories = await Category.insertMany(
@@ -169,9 +172,14 @@ const seedDatabase = async () => {
       { vendor_id: vendors[2].id, name: 'Abu Shaker Grill — Abu Rummaneh', image: IMG.grill, lat: 33.5210, lng: 36.2790, address: 'Abu Rummaneh', city: 'Damascus', work_time: workTime, delivery_time: '30-50 min', min_order: 30000, delivery_fee: 6000, free_delivery: false, is_active: true },
       { vendor_id: vendors[3].id, name: 'Pizza Corner — Shaalan', image: IMG.pizza, lat: 33.5158, lng: 36.2885, address: 'Shaalan', city: 'Damascus', work_time: workTime, delivery_time: '25-40 min', min_order: 25000, delivery_fee: 5000, free_delivery: false, is_active: true },
       { vendor_id: vendors[4].id, name: 'Café Younes — Malki', image: IMG.coffee, lat: 33.5249, lng: 36.2731, address: 'Malki', city: 'Damascus', work_time: workTime, delivery_time: '15-30 min', min_order: 12000, delivery_fee: 3000, free_delivery: false, is_active: true },
-      { vendor_id: vendors[5].id, name: 'Burger House — Baramkeh', image: IMG.burger, lat: 33.5096, lng: 36.2837, address: 'Baramkeh', city: 'Damascus', work_time: workTime, delivery_time: '25-40 min', min_order: 20000, delivery_fee: 5000, free_delivery: false, is_active: true }
+      { vendor_id: vendors[5].id, name: 'Burger House — Baramkeh', image: IMG.burger, lat: 33.5096, lng: 36.2837, address: 'Baramkeh', city: 'Damascus', work_time: workTime, delivery_time: '25-40 min', min_order: 20000, delivery_fee: 5000, free_delivery: false, is_active: true },
+      // Other cities — so the home's per-city filter is real (a Latakia customer
+      // sees only Latakia restaurants, not Damascus ones).
+      { vendor_id: vendors[0].id, name: 'Shawarma Al-Sham — Latakia', image: IMG.shawarma, lat: 35.5236, lng: 35.7917, address: 'American Quarter', city: 'Latakia', work_time: workTime, delivery_time: '25-40 min', min_order: 18000, delivery_fee: 5000, free_delivery: false, is_active: true },
+      { vendor_id: vendors[4].id, name: 'Café Younes — Latakia', image: IMG.coffee, lat: 35.5311, lng: 35.7796, address: 'Sea Front', city: 'Latakia', work_time: workTime, delivery_time: '15-30 min', min_order: 12000, delivery_fee: 3000, free_delivery: true, is_active: true },
+      { vendor_id: vendors[2].id, name: 'Abu Shaker Grill — Aleppo', image: IMG.grill, lat: 36.2021, lng: 37.1343, address: 'Aziziyah', city: 'Aleppo', work_time: workTime, delivery_time: '30-50 min', min_order: 25000, delivery_fee: 6000, free_delivery: false, is_active: true }
     ]);
-    console.log('🏢 Created 6 branches');
+    console.log(`🏢 Created ${branches.length} branches (Damascus, Latakia, Aleppo)`);
 
     // Subcategories (each tied to one of the food categories above)
     const subcategories = await Subcategory.insertMany([
@@ -316,6 +324,8 @@ const seedDatabase = async () => {
     const onTheWaySubtotal = onTheWayItems.reduce((s, it) => s + it.unit_price * it.qty, 0);
 
     await Order.insertMany([
+      // `ready`, unclaimed order(s) for the driver job board — see driverMockData.js.
+      ...buildDriverJobBoardOrders({ Order, userId: demo.user_id, branches, products }),
       {
         user_id: demo.user_id, branch_id: branches[0].id, vendor_name: 'Shawarma Al-Sham',
         items: deliveredItems, subtotal: deliveredSubtotal, delivery_fee: 5000, discount: 0,
@@ -328,7 +338,7 @@ const seedDatabase = async () => {
         items: onTheWayItems, subtotal: onTheWaySubtotal, delivery_fee: 6000, discount: 0,
         total: onTheWaySubtotal + 6000, currency: 'SYP', payment_method: 'COD', status: 'on_the_way',
         delivery_address: 'Abu Rummaneh, Damascus', leave_at_door: true, dont_ring_bell: false,
-        driver: { name: 'Khaled', vehicle: 'Motorcycle • Red', rating: '4.8', avatar: 'https://i.pravatar.cc/150?img=12' },
+        driver: mockDriverSnapshot,
         status_timeline: Order.buildTimeline('on_the_way'), eta_minutes: 18
       }
     ]);
@@ -336,7 +346,7 @@ const seedDatabase = async () => {
 
     console.log('✅ Database seeding completed successfully!');
     console.log('\n📊 Summary:');
-    console.log(`👥 Users: ${users.length}  (demo login: 0911111111 / OTP 000000)`);
+    console.log(`👥 Users: ${users.length}  (demo login: 0911111111 / OTP 000000  ·  driver: ${driverUsers[0].phone_number} / 000000)`);
     console.log(`📂 Categories: ${categories.length}`);
     console.log(`🏪 Vendors: ${vendors.length}`);
     console.log(`🏢 Branches: ${branches.length}`);

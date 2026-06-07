@@ -31,8 +31,9 @@ class OTPService {
         expires_at: expiresAt
       });
 
-      // Send OTP via email or SMS based on type
-      if (type === 'phone_login' && phone) {
+      // Send OTP via SMS whenever a phone number is supplied (phone_login,
+      // phone password reset, etc.); fall back to email otherwise.
+      if (phone) {
         // Simulate SMS delivery (in production, integrate with SMS gateway like Twilio)
         console.log(`[SMS SIMULATION] OTP ${otp} sent to ${phone}`);
         // In production, replace with actual SMS service:
@@ -91,7 +92,7 @@ class OTPService {
         is_used: false
       };
 
-      if (type === 'phone_login' && phone) {
+      if (phone) {
         query.phone = phone;
       } else if (email) {
         query.email = email;

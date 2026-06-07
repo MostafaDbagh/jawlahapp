@@ -3,6 +3,19 @@ const ResponseHelper = require('../utils/responseHelper');
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+const ADMIN_TYPES = ['PLATFORM_OWNER', 'PLATFORM_ADMIN'];
+
+// A platform admin may manage any restaurant; a restaurant owner only their own.
+function canManageVendor(user, vendor) {
+  if (!user || !vendor) return false;
+  if (ADMIN_TYPES.includes(user.account_type)) return true;
+  return !!vendor.owner_user_id && vendor.owner_user_id === user.user_id;
+}
+
+// Fields a branch owner may set/update. Excludes vendor_id so a branch can never
+// be reassigned to another restaurant through the update route.
+const BRANCH_EDITABLE = ['name', 'image', 'address', 'city', 'lat', 'lng', 'delivery_time', 'min_order', 'delivery_fee', 'free_delivery'];
+
 class BranchController {
   // GET /branches - List all branches with filters
   static async getAllBranches(req, res) {
@@ -303,10 +316,18 @@ class BranchController {
         return ResponseHelper.error(res, 'Vendor not found', 404);
       }
 
-      const branch = await Branch.create({
-        ...branchData,
-        vendor_id
-      });
+      // Only the restaurant's own owner (or an admin) may add a branch to it.
+      if (!canManageVendor(req.user, vendor)) {
+        return ResponseHelper.error(res, 'You are not allowed to add a branch to this restaurant', 403);
+      }
+
+      // Whitelist the fields a client may set; never trust vendor_id from the body.
+      const payload = { vendor_id };
+      for (const key of BRANCH_EDITABLE) {
+        if (branchData[key] !== undefined) payload[key] = branchData[key];
+      }
+
+      const branch = await Branch.create(payload);
 
       const createdBranch = await Branch.findOne({ id: branch.id })
         .populate({ path: 'vendor', select: 'id name image' });
@@ -322,13 +343,24 @@ class BranchController {
   static async updateBranch(req, res) {
     try {
       const { id } = req.params;
-      const updateData = req.body;
 
       const branch = await Branch.findOne({ id });
       if (!branch) {
         return ResponseHelper.error(res, 'Branch not found', 404);
       }
 
+      // Only the owning restaurant (or an admin) may edit this branch.
+      const vendor = await Vendor.findOne({ id: branch.vendor_id });
+      if (!canManageVendor(req.user, vendor)) {
+        return ResponseHelper.error(res, 'You are not allowed to edit this branch', 403);
+      }
+
+      // Apply only whitelisted fields — never req.body wholesale (would let a
+      // client move the branch to another vendor or toggle internal flags).
+      const updateData = {};
+      for (const key of BRANCH_EDITABLE) {
+        if (req.body[key] !== undefined) updateData[key] = req.body[key];
+      }
       await branch.update(updateData);
 
       const updatedBranch = await Branch.findOne({ id })
@@ -349,6 +381,12 @@ class BranchController {
       const branch = await Branch.findOne({ id });
       if (!branch) {
         return ResponseHelper.error(res, 'Branch not found', 404);
+      }
+
+      // Only the owning restaurant (or an admin) may remove this branch.
+      const vendor = await Vendor.findOne({ id: branch.vendor_id });
+      if (!canManageVendor(req.user, vendor)) {
+        return ResponseHelper.error(res, 'You are not allowed to delete this branch', 403);
       }
 
       await branch.update({ is_active: false });

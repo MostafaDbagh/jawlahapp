@@ -15,10 +15,21 @@ class JWTService {
     }
   }
 
-  // Verify JWT token
-  verifyToken(token) {
+  // Verify JWT token. When `expectedType` is given (e.g. 'access' / 'refresh'),
+  // a token that carries a DIFFERENT `type` claim is rejected — this stops a
+  // long-lived refresh token (or a password_reset token) from being replayed as
+  // an access token, and stops an access token from minting new tokens at
+  // /refresh-token. Tokens with no `type` claim (legacy) are still accepted.
+  verifyToken(token, expectedType = null) {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      if (expectedType && decoded.type && decoded.type !== expectedType) {
+        return {
+          success: false,
+          message: 'Invalid token type',
+          error: 'WRONG_TYPE'
+        };
+      }
       return {
         success: true,
         payload: decoded

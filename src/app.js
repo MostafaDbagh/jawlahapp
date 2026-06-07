@@ -9,6 +9,10 @@ const routes = require('./routes');
 
 const app = express();
 
+// Behind Vercel / a reverse proxy: trust the first proxy hop so req.ip reflects
+// the real client address (used by the rate limiters), not the proxy's.
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet());
 
