@@ -1,0 +1,174 @@
+// High-level notification entry point used by the controllers and the dispatch
+// engine. A single call both:
+//   1. persists a Notification document (so it appears in the in-app
+//      notification centre served by notificationController), and
+//   2. fires an FCM push to the user's device (best-effort).
+//
+// Always safe to call fire-and-forget — nothing here throws. Messages are
+// localized to the recipient's preferred_language (Arabic is the default, since
+// the app targets Syria; English is the fallback).
+const Notification = require('../models/Notification');
+const User = require('../models/User');
+const fcmService = require('./fcmService');
+
+const pickLang = (user) => (user && user.preferred_language === 'en' ? 'en' : 'ar');
+
+// Customer-facing order-status copy, keyed by Order status.
+const STATUS_MESSAGES = {
+  pending: {
+    ar: { title: 'تم استلام طلبك', body: 'طلبك قيد المراجعة الآن.' },
+    en: { title: 'Order received', body: 'Your order is being reviewed.' }
+  },
+  preparing: {
+    ar: { title: 'يتم تجهيز طلبك', body: 'المطعم يحضّر طلبك الآن.' },
+    en: { title: 'Preparing your order', body: 'The restaurant is preparing your order.' }
+  },
+  ready: {
+    ar: { title: 'طلبك جاهز', body: 'طلبك جاهز وبانتظار السائق.' },
+    en: { title: 'Order ready', body: 'Your order is ready and waiting for a driver.' }
+  },
+  on_the_way: {
+    ar: { title: 'طلبك في الطريق', body: 'السائق في طريقه إليك.' },
+    en: { title: 'On the way', body: 'Your driver is on the way to you.' }
+  },
+  delivered: {
+    ar: { title: 'تم توصيل طلبك', body: 'بالهنا والشفا! نتمنى لك وجبة شهية.' },
+    en: { title: 'Delivered', body: 'Your order has been delivered. Enjoy!' }
+  },
+  cancelled: {
+    ar: { title: 'تم إلغاء طلبك', body: 'تم إلغاء طلبك.' },
+    en: { title: 'Order cancelled', body: 'Your order has been cancelled.' }
+  }
+};
+
+// Persist a Notification row + push to the user's device. `user` must carry
+// user_id; fcm_token / preferred_language are optional (push is skipped when no
+// token). Internal — callers use the typed helpers below.
+async function deliver(user, { type = 'order', title, message, data = {} } = {}) {
+  if (!user || !user.user_id || !title || !message) {
+    return { ok: false, reason: 'missing-fields' };
+  }
+
+  let notification = null;
+  try {
+    notification = await Notification.create({
+      user_id: user.user_id,
+      type,
+      title,
+      message,
+      metadata: data
+    });
+  } catch (e) {
+    console.error('Notification persist error:', e.message);
+  }
+
+  if (user.fcm_token) {
+    await fcmService.sendToToken(user.fcm_token, {
+      title,
+      body: message,
+      data: {
+        ...data,
+        type,
+        notification_id: notification ? notification.notification_id : ''
+      }
+    });
+  }
+
+  return { ok: true, notification_id: notification ? notification.notification_id : null };
+}
+
+// Generic: look the user up by id, then deliver. Use when you don't already
+// hold the user document.
+async function notify(userId, payload = {}) {
+  try {
+    const user = await User.findOne({ user_id: userId })
+      .select('user_id fcm_token preferred_language')
+      .lean();
+    if (!user) return { ok: false, reason: 'no-user' };
+    return await deliver(user, payload);
+  } catch (e) {
+    console.error('notify error:', e.message);
+    return { ok: false, reason: 'error' };
+  }
+}
+
+// Notify the customer that their order moved to `status`.
+async function notifyOrderStatus(order, status) {
+  try {
+    const copy = STATUS_MESSAGES[status];
+    if (!order || !order.user_id || !copy) return { ok: false, reason: 'skip' };
+    const user = await User.findOne({ user_id: order.user_id })
+      .select('user_id fcm_token preferred_language')
+      .lean();
+    if (!user) return { ok: false, reason: 'no-user' };
+    const m = copy[pickLang(user)];
+    return await deliver(user, {
+      type: 'order',
+      title: m.title,
+      message: m.body,
+      data: { order_id: order.order_id, status }
+    });
+  } catch (e) {
+    console.error('notifyOrderStatus error:', e.message);
+    return { ok: false, reason: 'error' };
+  }
+}
+
+// Notify a driver that they've received an exclusive delivery offer. `driver`
+// is the (lean) user document already held by the dispatcher, and `order` is the
+// freshly-offered order (carrying assignment_attempt + vendor_name).
+async function notifyDriverOffer(driver, order) {
+  try {
+    if (!driver || !order) return { ok: false, reason: 'skip' };
+    const lang = pickLang(driver);
+    const vendor = order.vendor_name || (lang === 'en' ? 'a restaurant' : 'أحد المطاعم');
+    const title = lang === 'en' ? 'New delivery offer' : 'طلب توصيل جديد';
+    const body = lang === 'en' ? `Ready order from ${vendor}` : `طلب جاهز من ${vendor}`;
+    return await deliver(driver, {
+      type: 'order',
+      title,
+      message: body,
+      data: {
+        order_id: order.order_id,
+        offer_id: order.assignment_attempt ? order.assignment_attempt.offer_id : '',
+        kind: 'driver_offer'
+      }
+    });
+  } catch (e) {
+    console.error('notifyDriverOffer error:', e.message);
+    return { ok: false, reason: 'error' };
+  }
+}
+
+// Notify the customer that a driver has been assigned and is heading to pickup.
+async function notifyDriverAssigned(order) {
+  try {
+    if (!order || !order.user_id) return { ok: false, reason: 'skip' };
+    const user = await User.findOne({ user_id: order.user_id })
+      .select('user_id fcm_token preferred_language')
+      .lean();
+    if (!user) return { ok: false, reason: 'no-user' };
+    const lang = pickLang(user);
+    const driverName = (order.driver && order.driver.name) || (lang === 'en' ? 'A driver' : 'سائق');
+    const title = lang === 'en' ? 'Driver assigned' : 'تم تعيين سائق';
+    const body = lang === 'en'
+      ? `${driverName} is on the way to pick up your order.`
+      : `${driverName} في طريقه لاستلام طلبك.`;
+    return await deliver(user, {
+      type: 'order',
+      title,
+      message: body,
+      data: { order_id: order.order_id, status: order.status, kind: 'driver_assigned' }
+    });
+  } catch (e) {
+    console.error('notifyDriverAssigned error:', e.message);
+    return { ok: false, reason: 'error' };
+  }
+}
+
+module.exports = {
+  notify,
+  notifyOrderStatus,
+  notifyDriverOffer,
+  notifyDriverAssigned
+};

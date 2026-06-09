@@ -30,13 +30,20 @@ function parsePhone(raw) {
 // Mock accounts — one per account_type. Email roles log in via email+password
 // (web portal); DRIVER/CUSTOMER log in via phone OTP (mobile/driver app) using
 // the dev master code 000000 (works when NODE_ENV !== 'production').
+//
+// Phone format matters for the OTP accounts: Syrian national numbers are stored
+// in leading-0 form (0XXXXXXXXX, 10 digits) because the mobile apps build the
+// international string as +963 + 0 + national. So a phone-login number MUST be
+// written as +9630XXXXXXXXX here — drop the 0 and parsePhone() (last 10 digits)
+// eats a country-code digit and OTP login can never match. (Email accounts below
+// keep the 9-digit form since they never match by phone.)
 const ACCOUNTS = [
   { username: 'admin',    email: 'admin@jawlah.sy',    password: 'Admin123',     full_name: 'مدير المنصة',  account_type: 'PLATFORM_ADMIN',         phone: '+963900000000' },
   { username: 'owner',    email: 'owner@jawlah.sy',    password: 'Owner12345',   full_name: 'مالك المنصة',  account_type: 'PLATFORM_OWNER',         phone: '+963900000001' },
   { username: 'merchant', email: 'merchant@jawlah.sy', password: 'Merchant123',  full_name: 'صاحب مطعم',    account_type: 'SERVICE_PROVIDER_OWNER', phone: '+963900000002' },
   { username: 'support',  email: 'support@jawlah.sy',  password: 'Support123',   full_name: 'خدمة العملاء', account_type: 'CUSTOMER_SERVICE',       phone: '+963900000003' },
-  { username: 'driver',   email: 'driver@jawlah.sy',   password: 'Driver12345',  full_name: 'سائق جولة',    account_type: 'DRIVER',                 phone: '+963944000001', metadata: { vehicle: 'دراجة نارية', rating: 5, is_online: false } },
-  { username: 'customer', email: 'customer@jawlah.sy', password: 'Customer123',  full_name: 'عميل جولة',    account_type: 'CUSTOMER',               phone: '+963944000002' },
+  { username: 'driver',   email: 'driver@jawlah.sy',   password: 'Driver12345',  full_name: 'سائق جولة',    account_type: 'DRIVER',                 phone: '+9630944000001', metadata: { vehicle: 'دراجة نارية', rating: 5, is_online: false } },
+  { username: 'customer', email: 'customer@jawlah.sy', password: 'Customer123',  full_name: 'عميل جولة',    account_type: 'CUSTOMER',               phone: '+9630944000002' },
 ];
 
 async function upsertUser(def) {

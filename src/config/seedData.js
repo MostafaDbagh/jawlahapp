@@ -158,7 +158,7 @@ const seedDatabase = async () => {
     const vendors = await Vendor.insertMany([
       { name: 'Shawarma Al-Sham', image: IMG.shawarma, about: 'Authentic Damascene shawarma and grills.', is_active: true },
       { name: 'Damascus Sweets', image: IMG.baklava, about: 'Traditional Syrian sweets and desserts.', is_active: true },
-      { name: 'Abu Shaker Grill', image: IMG.grill, about: 'Charcoal kebab and mezze, a Damascus favourite.', is_active: true },
+      { name: 'Abu Shaker Grill', image: IMG.grill, about: 'Charcoal kebab and mezze, a Damascus favourite.', is_active: true, is_featured: true },
       { name: 'Pizza Corner', image: IMG.pizza, about: 'Wood-fired pizza and Italian favourites.', is_active: true },
       { name: 'Café Younes', image: IMG.coffee, about: 'Specialty coffee and fresh pastries.', is_active: true },
       { name: 'Burger House', image: IMG.burger, about: 'Juicy smash burgers, fried chicken and fries.', is_active: true }

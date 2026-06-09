@@ -70,6 +70,9 @@ const orderSchema = new mongoose.Schema({
   status: { type: String, enum: ORDER_STATUSES, default: 'pending', index: true },
 
   delivery_address: { type: String, default: null },
+  // Optional precise map pin from the customer app, for driver navigation.
+  delivery_lat: { type: Number, default: null },
+  delivery_lng: { type: Number, default: null },
   delivery_note: { type: String, default: null },
   leave_at_door: { type: Boolean, default: false },
   dont_ring_bell: { type: Boolean, default: false },
@@ -104,8 +107,11 @@ orderSchema.index({ user_id: 1, created_at: -1 });
 // Fast lazy sweep of expired exclusive offers (dispatchService.sweepExpired).
 orderSchema.index({ 'assignment_attempt.expires_at': 1 });
 
-// Default linear timeline for a freshly placed order (first step done).
-orderSchema.statics.buildTimeline = function buildTimeline(currentStatus = 'pending') {
+// Linear delivery timeline with every step up to `currentStatus` marked done.
+// Pass the order's existing timeline as `previous` so already-completed steps
+// keep their original timestamps instead of being reset to now. Statuses outside
+// the linear flow (e.g. 'cancelled') leave every step not-done.
+orderSchema.statics.buildTimeline = function buildTimeline(currentStatus = 'pending', previous = []) {
   const steps = [
     { status: 'pending', label: 'Order placed' },
     { status: 'preparing', label: 'Preparing your order' },
@@ -115,12 +121,18 @@ orderSchema.statics.buildTimeline = function buildTimeline(currentStatus = 'pend
   ];
   const currentIdx = steps.findIndex((s) => s.status === currentStatus);
   const now = new Date();
-  return steps.map((s, i) => ({
-    status: s.status,
-    label: s.label,
-    done: i <= currentIdx,
-    at: i <= currentIdx ? now : null
-  }));
+  const prevAt = new Map(
+    (previous || []).filter((p) => p && p.at).map((p) => [p.status, p.at])
+  );
+  return steps.map((s, i) => {
+    const done = i <= currentIdx;
+    return {
+      status: s.status,
+      label: s.label,
+      done,
+      at: done ? (prevAt.get(s.status) || now) : null
+    };
+  });
 };
 
 attachCommon(orderSchema);

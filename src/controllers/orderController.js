@@ -5,8 +5,13 @@ const Vendor = require('../models/Vendor');
 const Promotion = require('../models/Promotion');
 const ResponseHelper = require('../utils/responseHelper');
 const dispatchService = require('../services/dispatchService');
+const notificationService = require('../services/notificationService');
 
 const ADMIN_TYPES = ['PLATFORM_OWNER', 'PLATFORM_ADMIN'];
+
+// Flat delivery fee charged on every order (SYP). Overridable via env. Kept in
+// sync with the client's display value (jawlah_sy_react/src/lib/fees.ts).
+const DELIVERY_FEE = Number(process.env.DELIVERY_FEE) || 10000;
 
 // Branch ids belonging to every restaurant owned by the given user.
 async function ownedBranchIds(userId) {
@@ -47,11 +52,23 @@ class OrderController {
       const userId = req.user.user_id;
       const {
         delivery_address = null,
+        delivery_lat = null,
+        delivery_lng = null,
         delivery_note = null,
         leave_at_door = false,
         dont_ring_bell = false,
         promo_code = null
       } = req.body;
+
+      // Optional precise map pin (from the customer app's location picker), so
+      // the driver can navigate to the exact spot. Coerce + drop NaN so a bad
+      // value never persists.
+      const num = (v) => {
+        const n = Number(v);
+        return v != null && Number.isFinite(n) ? n : null;
+      };
+      const deliveryLat = num(delivery_lat);
+      const deliveryLng = num(delivery_lng);
 
       const cart = await Cart.findOne({ user_id: userId });
       if (!cart || cart.items.length === 0) {
@@ -59,16 +76,31 @@ class OrderController {
       }
 
       const branchId = cart.items[0].branch_id || null;
-      let deliveryFee = 0;
+      // Flat delivery fee on every order (a free_delivery promo below can still
+      // zero it). No longer derived from the branch's configured delivery_fee.
+      let deliveryFee = DELIVERY_FEE;
       let vendorName = null;
       if (branchId) {
         const branch = await Branch.findOne({ id: branchId });
-        if (branch) {
-          deliveryFee = branch.free_delivery ? 0 : Number(branch.delivery_fee) || 0;
-          // Snapshot the restaurant name onto the order so the customer's order
-          // list/details and the admin board show it without a join.
-          const vendor = await Vendor.findOne({ id: branch.vendor_id }).select('name').lean();
-          if (vendor) vendorName = vendor.name;
+        // Guard the checkout against a restaurant that can't currently take the
+        // order. Without this a customer could order from a branch that is
+        // blocked, paused (busy), or whose restaurant isn't approved/active.
+        if (!branch || branch.is_active === false) {
+          return res.status(409).json(ResponseHelper.error('This restaurant is currently unavailable', null, 0));
+        }
+        // Keeta-style "busy" toggle the restaurant controls itself. Legacy
+        // branches without the field (undefined) are treated as accepting.
+        if (branch.is_accepting_orders === false) {
+          return res.status(409).json(ResponseHelper.error('This restaurant is busy right now and not accepting new orders', null, 0));
+        }
+        // Snapshot the restaurant name onto the order so the customer's order
+        // list/details and the admin board show it without a join.
+        const vendor = await Vendor.findOne({ id: branch.vendor_id }).select('name is_active approval_status').lean();
+        if (vendor) {
+          if (vendor.is_active === false || (vendor.approval_status && vendor.approval_status !== 'approved')) {
+            return res.status(409).json(ResponseHelper.error('This restaurant is currently unavailable', null, 0));
+          }
+          vendorName = vendor.name;
         }
       }
 
@@ -135,6 +167,8 @@ class OrderController {
         payment_method: 'COD',
         status: 'pending',
         delivery_address,
+        delivery_lat: deliveryLat,
+        delivery_lng: deliveryLng,
         delivery_note,
         leave_at_door: !!leave_at_door,
         dont_ring_bell: !!dont_ring_bell,
@@ -145,6 +179,12 @@ class OrderController {
       // Empty the cart after a successful checkout.
       cart.items = [];
       await cart.save();
+
+      // Confirm the order to the customer (persist + push). Fire-and-forget —
+      // a notification failure must never break checkout.
+      notificationService
+        .notifyOrderStatus(order, 'pending')
+        .catch((e) => console.error('notify hook error:', e));
 
       res.status(201).json(ResponseHelper.success(order, 'Order placed successfully', 1));
     } catch (error) {
@@ -205,30 +245,10 @@ class OrderController {
     }
   }
 
-  // PATCH /orders/:id/cancel
-  async cancelOrder(req, res) {
-    try {
-      const order = await Order.findOne({ order_id: req.params.id, user_id: req.user.user_id });
-      if (!order) {
-        return res.status(404).json(ResponseHelper.error('Order not found', null, 0));
-      }
-      if (['delivered', 'cancelled'].includes(order.status)) {
-        return res.status(400).json(
-          ResponseHelper.error(`Cannot cancel a ${order.status} order`, null, 0)
-        );
-      }
-      order.status = 'cancelled';
-      order.status_timeline = [
-        ...order.status_timeline,
-        { status: 'cancelled', label: 'Order cancelled', at: new Date(), done: true }
-      ];
-      await order.save();
-      res.json(ResponseHelper.success(order, 'Order cancelled', 1));
-    } catch (error) {
-      console.error('Cancel order error:', error);
-      res.status(500).json(ResponseHelper.error('Failed to cancel order', error.message, 0));
-    }
-  }
+  // Customers cannot cancel an order. Once a Cash-on-Delivery order is placed it
+  // is final (Keeta-style) — there is intentionally no customer cancel endpoint.
+  // Restaurants/admins handle genuine operational exceptions through
+  // updateOrderStatus, which is the only path that may set status to 'cancelled'.
 
   // GET /orders/incoming  — the "Jawlah box": orders for the restaurant's
   // branches (owner) or every order (platform admin).
@@ -309,11 +329,19 @@ class OrderController {
       }
 
       order.status = status;
-      order.status_timeline = [
-        ...order.status_timeline,
-        { status, label: `Status: ${status}`, at: new Date(), done: true }
-      ];
+      // Rebuild the linear timeline so every step up to the new status is marked
+      // done (preserving earlier timestamps). Previously this appended a junk
+      // `Status: x` step and left the real steps' done flags stale, so the
+      // customer's tracking screen never advanced past "Order placed".
+      if (Order.ORDER_STATUSES.includes(status) && status !== 'cancelled') {
+        order.status_timeline = Order.buildTimeline(status, order.status_timeline);
+      }
       await order.save();
+
+      // Notify the customer of the new status (persist + push). Fire-and-forget.
+      notificationService
+        .notifyOrderStatus(order, status)
+        .catch((e) => console.error('notify hook error:', e));
 
       // Smart dispatch: once an order is ready, route it to the best driver.
       // Fire-and-forget — a dispatch failure must never break the status update.

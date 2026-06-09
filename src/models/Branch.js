@@ -63,6 +63,15 @@ const branchSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
     index: true
+  },
+  // Self-service "busy / pause orders" toggle the restaurant controls itself
+  // (Keeta-style). When false the branch stays listed but rejects new orders at
+  // checkout. Distinct from is_active (admin block) and work_time (schedule).
+  // Legacy branches without this field are treated as accepting (=== false check).
+  is_accepting_orders: {
+    type: Boolean,
+    default: true,
+    index: true
   }
 }, {
   collection: 'branches',

@@ -78,7 +78,7 @@ class BranchController {
 
       const [branches, count] = await Promise.all([
         Branch.find(query)
-          .populate({ path: 'vendor', select: 'id name image about' })
+          .populate({ path: 'vendor', select: 'id name image about is_featured' })
           .populate({
             path: 'subcategories',
             match: category_id ? { category_id } : {},
@@ -128,6 +128,11 @@ class BranchController {
       );
 
       const filteredBranches = branchesWithRatings.filter((branch) => branch !== null);
+
+      // Surface branches of admin-featured restaurants first, preserving the
+      // existing DB order otherwise (stable). Lets the customer home show
+      // featured restaurants at the top without an extra cross-collection sort.
+      filteredBranches.sort((a, b) => (b.vendor?.is_featured ? 1 : 0) - (a.vendor?.is_featured ? 1 : 0));
 
       return ResponseHelper.list(res, filteredBranches, count, 'Branches retrieved successfully');
     } catch (error) {
@@ -395,6 +400,44 @@ class BranchController {
     } catch (error) {
       console.error('Error deleting branch:', error);
       return ResponseHelper.error(res, 'Failed to deactivate branch', 500);
+    }
+  }
+
+  // PATCH /branches/:id/availability - Restaurant toggles "busy / not accepting
+  // orders" on its own branch (Keeta-style pause). Owner or admin only.
+  // Body: { is_accepting_orders: boolean }. The branch stays listed; checkout
+  // is what rejects new orders while paused.
+  static async setBranchAvailability(req, res) {
+    try {
+      const { id } = req.params;
+      const { is_accepting_orders } = req.body;
+
+      if (typeof is_accepting_orders !== 'boolean') {
+        return ResponseHelper.error(res, 'is_accepting_orders must be a boolean', 400);
+      }
+
+      const branch = await Branch.findOne({ id });
+      if (!branch) {
+        return ResponseHelper.error(res, 'Branch not found', 404);
+      }
+
+      // Only the owning restaurant (or an admin) may pause/resume this branch.
+      const vendor = await Vendor.findOne({ id: branch.vendor_id });
+      if (!canManageVendor(req.user, vendor)) {
+        return ResponseHelper.error(res, 'You are not allowed to manage this branch', 403);
+      }
+
+      await branch.update({ is_accepting_orders });
+
+      const updatedBranch = await Branch.findOne({ id });
+      return ResponseHelper.item(
+        res,
+        updatedBranch,
+        is_accepting_orders ? 'Branch is now accepting orders' : 'Branch is now paused (busy)'
+      );
+    } catch (error) {
+      console.error('Error updating branch availability:', error);
+      return ResponseHelper.error(res, 'Failed to update branch availability', 500);
     }
   }
 

@@ -18,6 +18,67 @@ function serialize(cart) {
   };
 }
 
+// Resolve client-supplied add-on selections against the product's own option
+// groups. The client only sends references ({ group_id, item_id }); prices and
+// names are taken from the product so they can't be tampered with (this is a
+// cash-on-delivery app — the resolved price is what the customer pays).
+// Returns { options } on success or { error } (a 400 message) on a rule violation.
+function resolveSelectedOptions(product, rawSelections) {
+  const groups = Array.isArray(product.option_groups) ? product.option_groups : [];
+  const selections = Array.isArray(rawSelections) ? rawSelections : [];
+
+  // Group the incoming refs by group id so we can validate per-group rules.
+  const byGroup = new Map();
+  for (const sel of selections) {
+    const groupId = sel && (sel.group_id ?? sel.groupId);
+    const itemId = sel && (sel.item_id ?? sel.itemId ?? sel.id);
+    if (groupId == null || itemId == null) continue;
+    if (!byGroup.has(groupId)) byGroup.set(groupId, []);
+    byGroup.get(groupId).push(itemId);
+  }
+
+  const resolved = [];
+  for (const group of groups) {
+    // De-duplicate item ids within the group (a checkbox can't be picked twice),
+    // then resolve them against the group — references to items that no longer
+    // exist (e.g. the merchant edited the menu) are dropped, not rejected.
+    const picked = [...new Set(byGroup.get(group.id) || [])];
+    const items = picked
+      .map((itemId) => (group.items || []).find((it) => it.id === itemId))
+      .filter(Boolean);
+
+    // Validate the group's rules against what actually resolved.
+    if (group.required && items.length === 0) {
+      return { error: `Please choose an option for "${group.name}"` };
+    }
+    if (group.multiple === false && items.length > 1) {
+      return { error: `Only one option can be selected for "${group.name}"` };
+    }
+    if (group.max != null && items.length > group.max) {
+      return { error: `Choose at most ${group.max} for "${group.name}"` };
+    }
+
+    for (const item of items) {
+      resolved.push({
+        group_id: group.id,
+        group_name: group.name,
+        id: item.id,
+        name: item.name,
+        price: Number(item.price) || 0
+      });
+    }
+  }
+
+  return { options: resolved };
+}
+
+// A stable signature of a line's selected add-ons, used so two lines of the same
+// product+variation but different add-ons don't merge into one.
+function optionsSignature(options) {
+  if (!Array.isArray(options) || options.length === 0) return '';
+  return options.map((o) => o.id).sort().join(',');
+}
+
 class CartController {
   // GET /cart
   async getCart(req, res) {
@@ -52,6 +113,14 @@ class CartController {
         if (match && match.price != null) unitPrice = Number(match.price);
       }
 
+      // Resolve add-on selections against the product (server-side prices + rules).
+      const { options: resolvedOptions, error: optionsError } = resolveSelectedOptions(product, options);
+      if (optionsError) {
+        return res.status(400).json(ResponseHelper.error(optionsError, null, 0));
+      }
+      const lineOptions = resolvedOptions.length > 0 ? resolvedOptions : null;
+      const optionsSig = optionsSignature(resolvedOptions);
+
       const cart = await getOrCreateCart(req.user.user_id);
 
       // Single-restaurant cart: an order can only contain items from one branch.
@@ -66,9 +135,12 @@ class CartController {
         cartReset = true;
       }
 
-      // Merge with an existing identical line (same product + variation).
+      // Merge with an existing identical line (same product + variation + add-ons).
       const existing = cart.items.find(
-        (it) => it.product_id === product_id && it.variation_id === variation_id
+        (it) =>
+          it.product_id === product_id &&
+          it.variation_id === variation_id &&
+          optionsSignature(it.options) === optionsSig
       );
       if (existing) {
         existing.qty += Number(qty) || 1;
@@ -81,7 +153,7 @@ class CartController {
           image: product.image,
           unit_price: unitPrice,
           qty: Number(qty) || 1,
-          options
+          options: lineOptions
         });
       }
 
@@ -99,24 +171,27 @@ class CartController {
     }
   }
 
-  // PATCH /cart/items/:product_id  { qty }
+  // PATCH /cart/items/:line_key  { qty }
+  // line_key matches a line id first, falling back to product_id for older
+  // clients (which addressed lines by product before per-line ids existed).
   async updateItem(req, res) {
     try {
-      const { product_id } = req.params;
+      const { product_id: lineKey } = req.params;
       const { qty } = req.body;
       const cart = await getOrCreateCart(req.user.user_id);
 
-      const item = cart.items.find((it) => it.product_id === product_id);
-      if (!item) {
+      let targetIdx = cart.items.findIndex((it) => it.id === lineKey);
+      if (targetIdx < 0) targetIdx = cart.items.findIndex((it) => it.product_id === lineKey);
+      if (targetIdx < 0) {
         return res.status(404).json(ResponseHelper.error('Item not found in cart', null, 0));
       }
 
       const newQty = Number(qty);
       if (!newQty || newQty <= 0) {
         // qty 0 (or less) removes the line.
-        cart.items = cart.items.filter((it) => it.product_id !== product_id);
+        cart.items.splice(targetIdx, 1);
       } else {
-        item.qty = newQty;
+        cart.items[targetIdx].qty = newQty;
       }
 
       await cart.save();
@@ -127,12 +202,14 @@ class CartController {
     }
   }
 
-  // DELETE /cart/items/:product_id
+  // DELETE /cart/items/:line_key  (line id first, product_id fallback)
   async removeItem(req, res) {
     try {
-      const { product_id } = req.params;
+      const { product_id: lineKey } = req.params;
       const cart = await getOrCreateCart(req.user.user_id);
-      cart.items = cart.items.filter((it) => it.product_id !== product_id);
+      let targetIdx = cart.items.findIndex((it) => it.id === lineKey);
+      if (targetIdx < 0) targetIdx = cart.items.findIndex((it) => it.product_id === lineKey);
+      if (targetIdx >= 0) cart.items.splice(targetIdx, 1);
       await cart.save();
       res.json(ResponseHelper.success(serialize(cart), 'Item removed from cart', 1));
     } catch (error) {
@@ -157,3 +234,5 @@ class CartController {
 
 module.exports = new CartController();
 module.exports.getOrCreateCart = getOrCreateCart;
+// Exported for unit testing the add-on resolution/price-integrity logic.
+module.exports.resolveSelectedOptions = resolveSelectedOptions;

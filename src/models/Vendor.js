@@ -60,6 +60,15 @@ const vendorSchema = new mongoose.Schema({
   rejection_reason: {
     type: String,
     default: null
+  },
+  // Editor's pick. When an admin features a restaurant it is surfaced first on
+  // the customer home (featured-first ordering) and gets a "مميز" badge.
+  // Legacy/seeded vendors default to false. Indexed so the customer-facing
+  // vendor list can sort by it at the DB level.
+  is_featured: {
+    type: Boolean,
+    default: false,
+    index: true
   }
 }, {
   collection: 'vendors',

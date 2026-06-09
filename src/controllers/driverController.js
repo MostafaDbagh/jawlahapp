@@ -3,6 +3,7 @@ const Branch = require('../models/Branch');
 const User = require('../models/User');
 const ResponseHelper = require('../utils/responseHelper');
 const dispatchService = require('../services/dispatchService');
+const notificationService = require('../services/notificationService');
 const { driverSnapshot } = require('../utils/driverSnapshot');
 
 // Statuses a driver can move an order through, and where they may move it from.
@@ -214,11 +215,15 @@ class DriverController {
       }
 
       order.status = status;
-      order.status_timeline = [
-        ...order.status_timeline,
-        { status, label: `Status: ${status}`, at: new Date(), done: true }
-      ];
+      // Rebuild the linear timeline so the customer's tracking screen advances
+      // (was appending a junk step and leaving the real steps' done flags stale).
+      order.status_timeline = Order.buildTimeline(status, order.status_timeline);
       await order.save();
+
+      // Tell the customer their order is on the way / delivered. Fire-and-forget.
+      notificationService
+        .notifyOrderStatus(order, status)
+        .catch((e) => console.error('notify hook error:', e));
 
       res.json(ResponseHelper.success(order, 'Order status updated', 1));
     } catch (error) {

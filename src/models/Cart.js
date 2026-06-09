@@ -5,6 +5,9 @@ const { attachCommon } = require('./baseSchema');
 // One cart per user. Items are denormalised snapshots so the cart keeps
 // rendering even if a product/price changes after it was added.
 const cartItemSchema = new mongoose.Schema({
+  // Stable per-line id so the same product with different add-ons forms distinct
+  // lines that can be updated/removed independently.
+  id: { type: String, default: uuidv4 },
   product_id: { type: String, required: true },
   variation_id: { type: String, default: null },
   branch_id: { type: String, default: null },

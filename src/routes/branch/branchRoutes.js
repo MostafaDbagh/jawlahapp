@@ -12,6 +12,8 @@ router.get('/:id', BranchController.getBranchById);
 
 // Protected routes (require authentication)
 router.post('/:id/activate', authenticateToken, BranchController.activateBranch);
+// Restaurant self-service "busy / pause orders" toggle (owner or admin)
+router.patch('/:id/availability', authenticateToken, BranchController.setBranchAvailability);
 
 // Vendor-specific routes (require vendor authentication)
 router.get('/vendor/:vendor_id', authenticateToken, BranchController.getVendorBranches);

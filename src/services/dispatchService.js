@@ -29,6 +29,7 @@ const User = require('../models/User');
 const Branch = require('../models/Branch');
 const cfg = require('../config/dispatch');
 const { driverSnapshot } = require('../utils/driverSnapshot');
+const notificationService = require('./notificationService');
 
 const ACTIVE_STATUSES = ['ready', 'on_the_way'];
 
@@ -209,6 +210,10 @@ async function dispatchOrder(orderId, sequence = 1) {
     { $inc: { 'metadata.offers_sent': 1 }, $set: { 'metadata.last_assigned_at': now } },
   ).catch(() => {});
 
+  // Push the exclusive offer to the chosen driver. Fire-and-forget — a push
+  // failure must never affect dispatch (the offer also surfaces via polling).
+  notificationService.notifyDriverOffer(best.d, claimed).catch(() => {});
+
   return { offered: best.d.user_id, offer_id: offer.offer_id, score: best.score, escalation_round: round };
 }
 
@@ -237,6 +242,10 @@ async function acceptOffer(offerId, user) {
   if (!order) return { code: 409, message: 'Offer expired or no longer available' };
 
   await User.updateOne({ user_id: user.user_id }, { $inc: { 'metadata.offers_accepted': 1 } }).catch(() => {});
+
+  // Let the customer know a driver is now heading to pick up their order.
+  notificationService.notifyDriverAssigned(order).catch(() => {});
+
   return { code: 200, order };
 }
 

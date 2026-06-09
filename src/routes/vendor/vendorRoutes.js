@@ -29,4 +29,8 @@ router.patch('/:id/unblock', authenticateToken, requireAccountType(ADMIN_TYPES),
 router.patch('/:id/approve', authenticateToken, requireAccountType(ADMIN_TYPES), VendorController.approveVendor);
 router.patch('/:id/reject', authenticateToken, requireAccountType(ADMIN_TYPES), VendorController.rejectVendor);
 
+// Admin-only: feature / unfeature a restaurant (editor's pick, shown first on home)
+router.patch('/:id/feature', authenticateToken, requireAccountType(ADMIN_TYPES), VendorController.featureVendor);
+router.patch('/:id/unfeature', authenticateToken, requireAccountType(ADMIN_TYPES), VendorController.unfeatureVendor);
+
 module.exports = router;

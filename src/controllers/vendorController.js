@@ -35,7 +35,10 @@ class VendorController {
       // matches legacy docs missing the field, which are treated as approved.)
       query.approval_status = { $nin: ['pending', 'rejected'] };
 
-      const sort = { [sort_by]: sort_order.toUpperCase() === 'ASC' ? 1 : -1 };
+      // Featured (admin "editor's pick") restaurants always lead the list, then
+      // the requested ordering. is_featured is a real indexed field so this is
+      // pagination-correct at the DB level.
+      const sort = { is_featured: -1, [sort_by]: sort_order.toUpperCase() === 'ASC' ? 1 : -1 };
 
       const [vendors, count] = await Promise.all([
         Vendor.find(query).sort(sort).skip(parseInt(offset)).limit(parseInt(limit)),
@@ -209,6 +212,31 @@ class VendorController {
     }
   }
 
+  // PATCH /vendors/:id/feature - Admin: mark a restaurant as featured (editor's pick)
+  static async featureVendor(req, res) {
+    return VendorController.setVendorFeatured(req, res, true, 'Restaurant featured successfully');
+  }
+
+  // PATCH /vendors/:id/unfeature - Admin: remove a restaurant from featured
+  static async unfeatureVendor(req, res) {
+    return VendorController.setVendorFeatured(req, res, false, 'Restaurant unfeatured successfully');
+  }
+
+  static async setVendorFeatured(req, res, isFeatured, message) {
+    try {
+      const { id } = req.params;
+      const vendor = await Vendor.findOne({ id });
+      if (!vendor) {
+        return ResponseHelper.error(res, 'Vendor not found', 404);
+      }
+      await vendor.update({ is_featured: isFeatured });
+      return ResponseHelper.item(res, { ...vendor.toJSON(), is_featured: isFeatured }, message);
+    } catch (error) {
+      console.error('Error changing vendor featured state:', error);
+      return ResponseHelper.error(res, 'Failed to update restaurant featured status', 500);
+    }
+  }
+
   // PUT /vendors/:id - Update vendor (owner of the restaurant or an admin only)
   static async updateVendor(req, res) {
     try {
@@ -291,9 +319,12 @@ class VendorController {
         })
       );
 
-      // Sort by rating and review count
+      // Featured first, then by rating and review count.
       const popularVendors = vendorsWithRatings
         .sort((a, b) => {
+          if (!!b.is_featured !== !!a.is_featured) {
+            return (b.is_featured ? 1 : 0) - (a.is_featured ? 1 : 0);
+          }
           if (b.average_rating !== a.average_rating) {
             return b.average_rating - a.average_rating;
           }

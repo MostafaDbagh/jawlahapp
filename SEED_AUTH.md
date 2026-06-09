@@ -26,8 +26,13 @@ MONGO_URI=mongodb://127.0.0.1:27017/jawla_dev npm run seed:auth
 | Platform Owner | `PLATFORM_OWNER` | Web · email + password | `owner@jawlah.sy` | `Owner12345` | +963 900 000 001 |
 | Merchant (restaurant owner) | `SERVICE_PROVIDER_OWNER` | Web · email + password | `merchant@jawlah.sy` | `Merchant123` | +963 900 000 002 |
 | Customer Service | `CUSTOMER_SERVICE` | Web · email + password | `support@jawlah.sy` | `Support123` | +963 900 000 003 |
-| Driver | `DRIVER` | Mobile · **phone OTP** | `driver@jawlah.sy` | `Driver12345` | **+963 944 000 001** |
-| Customer | `CUSTOMER` | Mobile · **phone OTP** | `customer@jawlah.sy` | `Customer123` | **+963 944 000 002** |
+| Driver | `DRIVER` | Mobile · **phone OTP** | `driver@jawlah.sy` | `Driver12345` | **+963 0944 000 001** |
+| Customer | `CUSTOMER` | Mobile · **phone OTP** | `customer@jawlah.sy` | `Customer123` | **+963 0944 000 002** |
+
+> Phone-login numbers keep the Syrian leading `0` (national form `0944000001`),
+> because the apps build the international string as `+963` + `0` + national. In
+> the app's phone field you type just the national part **`944000001`** (the
+> `+963` and leading `0` are added for you).
 
 The seed also creates a demo restaurant for the merchant: **مطعم جولة التجريبي**
 (approved + active) with one branch (الفرع الرئيسي, دمشق) and one product
@@ -57,8 +62,8 @@ Driver and Customer sign in by phone. In **development** (`NODE_ENV !==
 `request-otp-login` also returns the real `devOtp` in the response.
 
 ```
-POST /api/v1/auth/request-otp-login   { "phone": "+963944000001" }
-POST /api/v1/auth/verify-otp-login    { "phone": "+963944000001", "otp": "000000" }
+POST /api/v1/auth/request-otp-login   { "phone": "+9630944000001" }
+POST /api/v1/auth/verify-otp-login    { "phone": "+9630944000001", "otp": "000000" }
 → { data: { user, accessToken, refreshToken } }
 ```
 
