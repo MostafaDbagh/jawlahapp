@@ -1,7 +1,44 @@
+const { v4: uuidv4 } = require('uuid');
 const { Product, Branch, Subcategory, ProductVariation, Vendor } = require('../models');
 const ResponseHelper = require('../utils/responseHelper');
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Sanitise merchant-supplied add-on groups before they reach Mongoose: drop
+// groups/items without a name, coerce prices to non-negative numbers, and ensure
+// every group and item carries a stable id (preserved if sent, generated if not).
+function normalizeOptionGroups(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((group) => {
+      if (!group || typeof group.name !== 'string' || !group.name.trim()) return null;
+      const items = (Array.isArray(group.items) ? group.items : [])
+        .map((item) => {
+          if (!item || typeof item.name !== 'string' || !item.name.trim()) return null;
+          const price = Number(item.price);
+          return {
+            id: item.id || uuidv4(),
+            name: item.name.trim(),
+            price: Number.isFinite(price) && price > 0 ? price : 0,
+            image: typeof item.image === 'string' && item.image.trim() ? item.image.trim() : null,
+            popular: !!item.popular
+          };
+        })
+        .filter(Boolean);
+      if (items.length === 0) return null;
+      const max = Number(group.max);
+      return {
+        id: group.id || uuidv4(),
+        kind: typeof group.kind === 'string' && group.kind.trim() ? group.kind.trim() : null,
+        name: group.name.trim(),
+        required: !!group.required,
+        multiple: group.multiple !== false,
+        max: Number.isFinite(max) && max > 0 ? max : null,
+        items
+      };
+    })
+    .filter(Boolean);
+}
 
 const ADMIN_TYPES = ['PLATFORM_OWNER', 'PLATFORM_ADMIN'];
 
@@ -18,7 +55,7 @@ async function canManageBranch(user, branchId) {
 
 // Fields a client may set on a product. Excludes branch_id so a product can
 // never be moved to another branch (or restaurant) via the update route.
-const PRODUCT_EDITABLE = ['name', 'description', 'price', 'image', 'subcategory_id', 'is_active'];
+const PRODUCT_EDITABLE = ['name', 'description', 'price', 'image', 'subcategory_id', 'is_active', 'discount_percentage', 'is_bestseller', 'option_groups'];
 
 class ProductController {
   // GET /branches/:id/products - List products for a branch
@@ -184,7 +221,7 @@ class ProductController {
   static async createProduct(req, res) {
     try {
       const { id: branch_id } = req.params;
-      const { subcategory_id, name, description, price, image, variations } = req.body;
+      const { subcategory_id, name, description, price, image, variations, option_groups, discount_percentage, is_bestseller } = req.body;
 
       // Verify branch exists
       const branch = await Branch.findOne({ id: branch_id });
@@ -205,13 +242,17 @@ class ProductController {
         }
       }
 
+      const pct = Number(discount_percentage);
       const product = await Product.create({
         branch_id,
         subcategory_id,
         name,
         description,
         price,
-        image
+        image,
+        discount_percentage: Number.isFinite(pct) ? Math.min(Math.max(pct, 0), 100) : 0,
+        is_bestseller: !!is_bestseller,
+        option_groups: normalizeOptionGroups(option_groups)
       });
 
       // Add variations if provided
@@ -257,6 +298,10 @@ class ProductController {
       const updateData = {};
       for (const key of PRODUCT_EDITABLE) {
         if (req.body[key] !== undefined) updateData[key] = req.body[key];
+      }
+      // Add-on groups are sanitised before persisting.
+      if (updateData.option_groups !== undefined) {
+        updateData.option_groups = normalizeOptionGroups(updateData.option_groups);
       }
       await product.update(updateData);
 

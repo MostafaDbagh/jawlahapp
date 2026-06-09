@@ -473,7 +473,10 @@ const validateProductCreate = [
   body('description').optional().isString(),
   body('image').optional().isURL().withMessage('Valid image URL is required'),
   body('subcategory_id').optional().isUUID().withMessage('Valid subcategory ID is required'),
+  body('discount_percentage').optional().isFloat({ min: 0, max: 100 }).withMessage('Discount must be between 0 and 100'),
+  body('is_bestseller').optional().isBoolean().withMessage('is_bestseller must be a boolean'),
   body('variations').optional().isArray(),
+  body('option_groups').optional().isArray(),
   handleValidationErrors
 ];
 
@@ -483,6 +486,9 @@ const validateProductUpdate = [
   body('description').optional().isString(),
   body('image').optional().isURL().withMessage('Valid image URL is required'),
   body('subcategory_id').optional().isUUID().withMessage('Valid subcategory ID is required'),
+  body('discount_percentage').optional().isFloat({ min: 0, max: 100 }).withMessage('Discount must be between 0 and 100'),
+  body('is_bestseller').optional().isBoolean().withMessage('is_bestseller must be a boolean'),
+  body('option_groups').optional().isArray(),
   handleValidationErrors
 ];
 
