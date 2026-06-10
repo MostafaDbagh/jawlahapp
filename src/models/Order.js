@@ -68,6 +68,8 @@ const orderSchema = new mongoose.Schema({
   payment_method: { type: String, default: 'COD', enum: ['COD'] },
 
   status: { type: String, enum: ORDER_STATUSES, default: 'pending', index: true },
+  // Why a cancelled order was rejected (merchant-supplied), null otherwise.
+  cancel_reason: { type: String, default: null },
 
   delivery_address: { type: String, default: null },
   // Optional precise map pin from the customer app, for driver navigation.

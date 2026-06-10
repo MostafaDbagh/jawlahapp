@@ -30,6 +30,28 @@ const vendorSchema = new mongoose.Schema({
     default: 'restaurant',
     index: true
   },
+  // Restaurant categories the owner picks during onboarding — up to 5 from the
+  // full home-category list (shawarma, burgers, pizza, …). Stored as stable
+  // keys; each client maps them to localized labels (see jawlah_web
+  // RESTAURANT_CATEGORIES / jawlah_sy_react lib/cuisines). Shown as the "cuisine"
+  // line on the customer restaurant card and usable for filtering. Legacy/seeded
+  // vendors have []; the legacy `cafe` key is kept valid for back-compat.
+  cuisines: {
+    type: [{
+      type: String,
+      enum: [
+        'shawarma', 'burgers', 'pizza', 'grills', 'chicken', 'breakfast',
+        'sandwiches', 'arabic', 'healthy', 'coffee', 'desserts', 'ice_cream',
+        'fried', 'bakery', 'fast_food', 'international', 'cafe'
+      ]
+    }],
+    default: [],
+    validate: {
+      validator: (arr) => !Array.isArray(arr) || arr.length <= 5,
+      message: 'A restaurant can have at most 5 categories'
+    },
+    index: true
+  },
   image: {
     type: String,
     default: null

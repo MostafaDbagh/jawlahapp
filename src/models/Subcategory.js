@@ -16,7 +16,7 @@ const subcategorySchema = new mongoose.Schema({
   },
   category_id: {
     type: String,
-    required: true,
+    default: null,
     index: true
   },
   name: {

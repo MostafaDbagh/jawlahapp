@@ -17,11 +17,14 @@ const optionItemSchema = new mongoose.Schema({
 // multiple=false → single-select (radio); required → at least one must be picked;
 // max → cap on how many can be picked (only meaningful when multiple).
 // `kind` tags a well-known group the merchant UI renders specially:
-// 'flavor' | 'side' | 'meal' | 'appetizer' (null = a custom group).
+// 'flavor' | 'side' | 'meal' | 'appetizer', 'custom' = a merchant-authored
+// section with its own title + description (null = an unlabelled/legacy group).
+// `description` is a short subtitle shown under the group title (custom groups).
 const optionGroupSchema = new mongoose.Schema({
   id: { type: String, default: uuidv4 },
   kind: { type: String, default: null },
   name: { type: String, required: true },
+  description: { type: String, default: null },
   required: { type: Boolean, default: false },
   multiple: { type: Boolean, default: true },
   max: { type: Number, default: null },
@@ -80,6 +83,14 @@ const productSchema = new mongoose.Schema({
   option_groups: {
     type: [optionGroupSchema],
     default: []
+  },
+  // Merchant "sold out" toggle — when false the item is hidden from customers
+  // but stays in the merchant's menu so it can be switched back on. Distinct from
+  // is_active (which is the soft-delete / disabled flag).
+  is_available: {
+    type: Boolean,
+    default: true,
+    index: true
   },
   is_active: {
     type: Boolean,

@@ -31,6 +31,7 @@ function normalizeOptionGroups(raw) {
         id: group.id || uuidv4(),
         kind: typeof group.kind === 'string' && group.kind.trim() ? group.kind.trim() : null,
         name: group.name.trim(),
+        description: typeof group.description === 'string' && group.description.trim() ? group.description.trim() : null,
         required: !!group.required,
         multiple: group.multiple !== false,
         max: Number.isFinite(max) && max > 0 ? max : null,
@@ -55,7 +56,7 @@ async function canManageBranch(user, branchId) {
 
 // Fields a client may set on a product. Excludes branch_id so a product can
 // never be moved to another branch (or restaurant) via the update route.
-const PRODUCT_EDITABLE = ['name', 'description', 'price', 'image', 'subcategory_id', 'is_active', 'discount_percentage', 'is_bestseller', 'option_groups'];
+const PRODUCT_EDITABLE = ['name', 'description', 'price', 'image', 'subcategory_id', 'is_active', 'is_available', 'discount_percentage', 'is_bestseller', 'option_groups'];
 
 class ProductController {
   // GET /branches/:id/products - List products for a branch
@@ -69,11 +70,17 @@ class ProductController {
         search,
         min_price,
         max_price,
-        has_offer
+        has_offer,
+        include_unavailable
       } = req.query;
 
       const offset = (page - 1) * limit;
       const query = { branch_id, is_active: true };
+      // Customers never see sold-out items; the merchant menu passes
+      // include_unavailable=1 to also list and manage them.
+      if (!(include_unavailable === '1' || include_unavailable === 'true')) {
+        query.is_available = { $ne: false };
+      }
 
       // Filter by subcategory
       if (subcategory_id) {
@@ -141,7 +148,8 @@ class ProductController {
       const { page = 1, limit = 20, search, min_price, max_price } = req.query;
 
       const offset = (page - 1) * limit;
-      const query = { branch_id, subcategory_id: sub_id, is_active: true };
+      // Customer-facing: hide sold-out items.
+      const query = { branch_id, subcategory_id: sub_id, is_active: true, is_available: { $ne: false } };
 
       // Search filter
       if (search) {

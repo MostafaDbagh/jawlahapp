@@ -100,14 +100,17 @@ class SubcategoryController {
         return ResponseHelper.error(res, 'Branch not found', 404);
       }
 
-      // Verify category exists
-      const category = await Category.findOne({ id: category_id });
-      if (!category) {
-        return ResponseHelper.error(res, 'Category not found', 404);
+      // Parent platform-category is optional for a restaurant menu section;
+      // only validate it when one was supplied.
+      if (category_id) {
+        const category = await Category.findOne({ id: category_id });
+        if (!category) {
+          return ResponseHelper.error(res, 'Category not found', 404);
+        }
       }
 
       // Check if subcategory already exists for this branch
-      const existingSubcategory = await Subcategory.findOne({ branch_id, category_id, name });
+      const existingSubcategory = await Subcategory.findOne({ branch_id, name });
 
       if (existingSubcategory) {
         return ResponseHelper.error(res, 'Subcategory already exists for this branch', 400);

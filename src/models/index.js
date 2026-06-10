@@ -21,6 +21,7 @@ const Cart = require('./Cart');
 const Order = require('./Order');
 const Complaint = require('./Complaint');
 const ContactRequest = require('./ContactRequest');
+const PlatformSetting = require('./PlatformSetting');
 
 module.exports = {
   User,
@@ -42,5 +43,6 @@ module.exports = {
   Cart,
   Order,
   Complaint,
-  ContactRequest
+  ContactRequest,
+  PlatformSetting
 };

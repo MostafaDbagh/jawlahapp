@@ -1,17 +1,18 @@
 const Order = require('../models/Order');
 const Cart = require('../models/Cart');
+const User = require('../models/User');
 const Branch = require('../models/Branch');
 const Vendor = require('../models/Vendor');
 const Promotion = require('../models/Promotion');
+const PlatformSetting = require('../models/PlatformSetting');
 const ResponseHelper = require('../utils/responseHelper');
 const dispatchService = require('../services/dispatchService');
 const notificationService = require('../services/notificationService');
 
 const ADMIN_TYPES = ['PLATFORM_OWNER', 'PLATFORM_ADMIN'];
 
-// Flat delivery fee charged on every order (SYP). Overridable via env. Kept in
-// sync with the client's display value (jawlah_sy_react/src/lib/fees.ts).
-const DELIVERY_FEE = Number(process.env.DELIVERY_FEE) || 10000;
+// Delivery pricing now lives in PlatformSetting (company-controlled, editable
+// from the admin board) instead of a hardcoded env constant.
 
 // Branch ids belonging to every restaurant owned by the given user.
 async function ownedBranchIds(userId) {
@@ -75,10 +76,13 @@ class OrderController {
         return res.status(400).json(ResponseHelper.error('Cart is empty', null, 0));
       }
 
+      // Company-controlled delivery pricing from the platform settings (set by
+      // admins, never merchants). A per-city override or the free-delivery
+      // threshold / a free_delivery promo below can still adjust it.
+      const settings = await PlatformSetting.getSingleton();
+
       const branchId = cart.items[0].branch_id || null;
-      // Flat delivery fee on every order (a free_delivery promo below can still
-      // zero it). No longer derived from the branch's configured delivery_fee.
-      let deliveryFee = DELIVERY_FEE;
+      let deliveryFee = Number(settings.delivery_fee) || 0;
       let vendorName = null;
       if (branchId) {
         const branch = await Branch.findOne({ id: branchId });
@@ -93,6 +97,8 @@ class OrderController {
         if (branch.is_accepting_orders === false) {
           return res.status(409).json(ResponseHelper.error('This restaurant is busy right now and not accepting new orders', null, 0));
         }
+        // Apply the city-specific delivery fee (falls back to the global fee).
+        deliveryFee = settings.resolveDeliveryFee(branch.city);
         // Snapshot the restaurant name onto the order so the customer's order
         // list/details and the admin board show it without a join.
         const vendor = await Vendor.findOne({ id: branch.vendor_id }).select('name is_active approval_status').lean();
@@ -105,6 +111,12 @@ class OrderController {
       }
 
       const subtotal = cart.items.reduce((sum, it) => sum + lineTotal(it), 0);
+
+      // Platform-wide free-delivery threshold (0 disables): orders at/above this
+      // subtotal ship free regardless of city fee.
+      if (settings.free_delivery_min_subtotal > 0 && subtotal >= settings.free_delivery_min_subtotal) {
+        deliveryFee = 0;
+      }
 
       // Apply a promo code when supplied and currently usable. The redemption is
       // claimed atomically so a usage_limit can't be exceeded under concurrent
@@ -163,7 +175,7 @@ class OrderController {
         discount: Math.round(discount * 100) / 100,
         promo_code: appliedPromo ? appliedPromo.code : null,
         total: Math.round(total * 100) / 100,
-        currency: 'SYP',
+        currency: settings.currency || 'SYP',
         payment_method: 'COD',
         status: 'pending',
         delivery_address,
@@ -286,9 +298,28 @@ class OrderController {
         Order.countDocuments({ ...baseQuery, status: 'pending' })
       ]);
 
+      // Resolve each order's customer contact (the order only stores user_id) so
+      // the merchant can phone the customer about the order. Batched, one query.
+      const userIds = [...new Set(rows.map((o) => o.user_id).filter(Boolean))];
+      const users = userIds.length
+        ? await User.find({ user_id: { $in: userIds } })
+            .select('user_id full_name username country_code phone_number')
+            .lean()
+        : [];
+      const userById = new Map(users.map((u) => [u.user_id, u]));
+      const orders = rows.map((o) => {
+        const u = userById.get(o.user_id);
+        return {
+          ...o.toJSON(),
+          customer: u
+            ? { name: u.full_name || u.username, phone: `${u.country_code || ''}${u.phone_number || ''}` }
+            : null
+        };
+      });
+
       res.json(
         ResponseHelper.success({
-          orders: rows,
+          orders,
           stats: { total_orders: totalAll, pending: pendingCount },
           pagination: {
             currentPage: page,
@@ -307,7 +338,7 @@ class OrderController {
   // PATCH /orders/:id/status  — restaurant/admin advances an order's status.
   async updateOrderStatus(req, res) {
     try {
-      const { status } = req.body;
+      const { status, eta_minutes, cancel_reason } = req.body;
       if (!status || !Order.ORDER_STATUSES.includes(status)) {
         return res.status(400).json(
           ResponseHelper.error(`status must be one of: ${Order.ORDER_STATUSES.join(', ')}`, null, 0)
@@ -326,6 +357,17 @@ class OrderController {
         if (!order.branch_id || !branchIds.includes(order.branch_id)) {
           return res.status(403).json(ResponseHelper.error('You cannot manage this order', null, 0));
         }
+      }
+
+      // Prep-time ETA the merchant promises when accepting (or adjusting). Clamped
+      // to a sane 1–180 min so the customer's "ready in ~X" stays believable.
+      if (eta_minutes != null) {
+        const eta = Math.round(Number(eta_minutes));
+        if (Number.isFinite(eta) && eta > 0) order.eta_minutes = Math.min(eta, 180);
+      }
+      // Reason captured when a merchant rejects/cancels an order.
+      if (status === 'cancelled' && typeof cancel_reason === 'string' && cancel_reason.trim()) {
+        order.cancel_reason = cancel_reason.trim().slice(0, 300);
       }
 
       order.status = status;

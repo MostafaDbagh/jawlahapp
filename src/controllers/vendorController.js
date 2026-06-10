@@ -259,7 +259,7 @@ class VendorController {
       // ownership (owner_user_id) are changed ONLY through the dedicated
       // approve/reject/block/unblock admin endpoints, so a restaurant owner
       // cannot self-approve or take over another restaurant via this route.
-      const editable = ['name', 'type', 'image', 'about'];
+      const editable = ['name', 'type', 'cuisines', 'image', 'about'];
       if (isAdmin) editable.push('subscript_date');
       const updateData = {};
       for (const key of editable) {

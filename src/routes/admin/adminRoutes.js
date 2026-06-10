@@ -29,4 +29,8 @@ router.get('/orders/:id/dispatch-history', adminController.getDispatchHistory);
 // Restaurants (all approval statuses, incl. pending requests)
 router.get('/vendors', adminController.listVendors);
 
+// Platform settings (delivery pricing, support contact, …) — company-controlled.
+router.get('/settings', adminController.getSettings);
+router.put('/settings', adminController.updateSettings);
+
 module.exports = router;

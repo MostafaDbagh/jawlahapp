@@ -448,7 +448,8 @@ const validateBranchUpdate = [
 
 // Subcategory validation rules
 const validateSubcategoryCreate = [
-  body('category_id').isUUID().withMessage('Valid category ID is required'),
+  // Optional parent platform-category — a restaurant menu section doesn't need one.
+  body('category_id').optional({ nullable: true }).isUUID().withMessage('Valid category ID is required'),
   body('name').notEmpty().withMessage('Subcategory name is required'),
   body('image').optional().isURL().withMessage('Valid image URL is required'),
   body('has_offer').optional().isBoolean(),

@@ -13,8 +13,16 @@ function canManageVendor(user, vendor) {
 }
 
 // Fields a branch owner may set/update. Excludes vendor_id so a branch can never
-// be reassigned to another restaurant through the update route.
-const BRANCH_EDITABLE = ['name', 'image', 'address', 'city', 'lat', 'lng', 'delivery_time', 'min_order', 'delivery_fee', 'free_delivery'];
+// be reassigned to another restaurant through the update route. Delivery pricing
+// is intentionally NOT here — see ADMIN_ONLY_BRANCH_FIELDS.
+const BRANCH_EDITABLE = ['name', 'image', 'address', 'city', 'lat', 'lng', 'delivery_time', 'min_order'];
+
+// Delivery pricing is set by the platform/company, never by the merchant, so only
+// a platform admin/owner may set these. A restaurant owner can't price their own
+// delivery — the field falls back to the Branch default for merchant-created branches.
+const ADMIN_ONLY_BRANCH_FIELDS = ['delivery_fee', 'free_delivery'];
+
+const isAdmin = (user) => !!user && ADMIN_TYPES.includes(user.account_type);
 
 class BranchController {
   // GET /branches - List all branches with filters
@@ -78,7 +86,7 @@ class BranchController {
 
       const [branches, count] = await Promise.all([
         Branch.find(query)
-          .populate({ path: 'vendor', select: 'id name image about is_featured' })
+          .populate({ path: 'vendor', select: 'id name image about is_featured cuisines' })
           .populate({
             path: 'subcategories',
             match: category_id ? { category_id } : {},
@@ -159,7 +167,7 @@ class BranchController {
 
       // Calculate distance for each branch
       const branches = await Branch.find({ is_active: true })
-        .populate({ path: 'vendor', select: 'id name image' });
+        .populate({ path: 'vendor', select: 'id name image cuisines' });
 
       const branchesWithDistance = await Promise.all(
         branches.map(async (branch) => {
@@ -199,7 +207,7 @@ class BranchController {
       const { limit = 20 } = req.query;
 
       const branches = await Branch.find({ is_active: true })
-        .populate({ path: 'vendor', select: 'id name image' })
+        .populate({ path: 'vendor', select: 'id name image cuisines' })
         .populate({ path: 'reviews', select: 'rating' })
         .limit(parseInt(limit));
 
@@ -237,7 +245,7 @@ class BranchController {
       const { id } = req.params;
 
       const branch = await Branch.findOne({ id, is_active: true })
-        .populate({ path: 'vendor', select: 'id name image about' })
+        .populate({ path: 'vendor', select: 'id name image about cuisines' })
         .populate({
           path: 'subcategories',
           match: { is_active: true },
@@ -331,11 +339,17 @@ class BranchController {
       for (const key of BRANCH_EDITABLE) {
         if (branchData[key] !== undefined) payload[key] = branchData[key];
       }
+      // Delivery pricing is company-controlled — only honour it from a platform admin.
+      if (isAdmin(req.user)) {
+        for (const key of ADMIN_ONLY_BRANCH_FIELDS) {
+          if (branchData[key] !== undefined) payload[key] = branchData[key];
+        }
+      }
 
       const branch = await Branch.create(payload);
 
       const createdBranch = await Branch.findOne({ id: branch.id })
-        .populate({ path: 'vendor', select: 'id name image' });
+        .populate({ path: 'vendor', select: 'id name image cuisines' });
 
       return ResponseHelper.item(res, createdBranch, 'Branch created successfully', 201);
     } catch (error) {
@@ -366,10 +380,16 @@ class BranchController {
       for (const key of BRANCH_EDITABLE) {
         if (req.body[key] !== undefined) updateData[key] = req.body[key];
       }
+      // Delivery pricing is company-controlled — only a platform admin may change it.
+      if (isAdmin(req.user)) {
+        for (const key of ADMIN_ONLY_BRANCH_FIELDS) {
+          if (req.body[key] !== undefined) updateData[key] = req.body[key];
+        }
+      }
       await branch.update(updateData);
 
       const updatedBranch = await Branch.findOne({ id })
-        .populate({ path: 'vendor', select: 'id name image' });
+        .populate({ path: 'vendor', select: 'id name image cuisines' });
 
       return ResponseHelper.item(res, updatedBranch, 'Branch updated successfully');
     } catch (error) {

@@ -7,6 +7,7 @@ const Order = require('../models/Order');
 const Complaint = require('../models/Complaint');
 const ContactRequest = require('../models/ContactRequest');
 const Promotion = require('../models/Promotion');
+const PlatformSetting = require('../models/PlatformSetting');
 const ResponseHelper = require('../utils/responseHelper');
 const dispatchService = require('../services/dispatchService');
 
@@ -520,6 +521,60 @@ class AdminController {
     } catch (error) {
       console.error('Admin dispatch history error:', error);
       return ResponseHelper.error(res, 'Failed to retrieve dispatch history', 500);
+    }
+  }
+
+  // GET /admin/settings — platform-wide config (delivery pricing, support, …).
+  async getSettings(req, res) {
+    try {
+      const settings = await PlatformSetting.getSingleton();
+      return ResponseHelper.item(res, settings.toJSON(), 'Platform settings retrieved');
+    } catch (error) {
+      console.error('Admin get settings error:', error);
+      return ResponseHelper.error(res, 'Failed to retrieve platform settings', 500);
+    }
+  }
+
+  // PUT /admin/settings — update platform config. Delivery pricing is set here,
+  // by the company, never by a merchant.
+  async updateSettings(req, res) {
+    try {
+      const settings = await PlatformSetting.getSingleton();
+      const { delivery_fee, city_delivery_fees, free_delivery_min_subtotal, currency, support_phone, support_email } = req.body;
+
+      const nonNeg = (v) => {
+        const n = Number(v);
+        return Number.isFinite(n) && n >= 0 ? n : null;
+      };
+
+      if (delivery_fee !== undefined) {
+        const v = nonNeg(delivery_fee);
+        if (v === null) return ResponseHelper.error(res, 'delivery_fee must be a non-negative number', 400);
+        settings.delivery_fee = v;
+      }
+      if (free_delivery_min_subtotal !== undefined) {
+        const v = nonNeg(free_delivery_min_subtotal);
+        if (v === null) return ResponseHelper.error(res, 'free_delivery_min_subtotal must be a non-negative number', 400);
+        settings.free_delivery_min_subtotal = v;
+      }
+      if (city_delivery_fees !== undefined) {
+        if (!Array.isArray(city_delivery_fees)) {
+          return ResponseHelper.error(res, 'city_delivery_fees must be an array', 400);
+        }
+        // Drop rows without a city name; coerce fees to non-negative numbers.
+        settings.city_delivery_fees = city_delivery_fees
+          .filter((c) => c && typeof c.city === 'string' && c.city.trim())
+          .map((c) => ({ city: c.city.trim(), fee: nonNeg(c.fee) ?? 0 }));
+      }
+      if (currency !== undefined) settings.currency = String(currency).trim() || 'SYP';
+      if (support_phone !== undefined) settings.support_phone = support_phone ? String(support_phone).trim() : null;
+      if (support_email !== undefined) settings.support_email = support_email ? String(support_email).trim() : null;
+
+      await settings.save();
+      return ResponseHelper.item(res, settings.toJSON(), 'Platform settings updated');
+    } catch (error) {
+      console.error('Admin update settings error:', error);
+      return ResponseHelper.error(res, 'Failed to update platform settings', 500);
     }
   }
 }
