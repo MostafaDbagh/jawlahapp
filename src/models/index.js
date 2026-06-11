@@ -16,6 +16,7 @@ const ProductVariation = require('./ProductVariation');
 const Review = require('./Review');
 const Offer = require('./Offer');
 const Promotion = require('./Promotion');
+const VendorPromotion = require('./VendorPromotion');
 const Notification = require('./Notification');
 const Cart = require('./Cart');
 const Order = require('./Order');
@@ -39,6 +40,7 @@ module.exports = {
   Review,
   Offer,
   Promotion,
+  VendorPromotion,
   Notification,
   Cart,
   Order,

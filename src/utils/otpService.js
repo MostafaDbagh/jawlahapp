@@ -163,7 +163,6 @@ class OTPService {
         expires_at: { $lt: new Date() }
       });
       const deletedCount = result.deletedCount || 0;
-      console.log(`Cleaned up ${deletedCount} expired OTPs`);
       return deletedCount;
     } catch (error) {
       console.error('OTP cleanup error:', error);
