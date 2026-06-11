@@ -17,8 +17,25 @@ app.set('trust proxy', 1);
 app.use(helmet());
 
 // CORS configuration
+// Origins are read from ALLOWED_ORIGINS (comma-separated). Entries are trimmed so
+// "a, b" works, and empties are dropped. Requests with no Origin header (native
+// mobile apps, curl, server-to-server) are always allowed — CORS only governs
+// browsers. A browser origin not on the list is rejected (and logged) instead of
+// failing silently.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:3000', 'http://localhost:3001'])
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:3000', 'http://localhost:3001'],
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    console.warn(`CORS: blocked origin "${origin}" (not in ALLOWED_ORIGINS)`);
+    return callback(new Error(`Origin ${origin} not allowed by CORS`));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
