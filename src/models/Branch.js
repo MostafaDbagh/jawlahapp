@@ -79,6 +79,10 @@ const branchSchema = new mongoose.Schema({
 });
 
 branchSchema.index({ lat: 1, lng: 1 });
+// Customer browse: find({ is_active }).sort({ created_at: -1 }); and the
+// per-vendor branch list find({ vendor_id, is_active }).
+branchSchema.index({ is_active: 1, created_at: -1 });
+branchSchema.index({ vendor_id: 1, is_active: 1 });
 
 // Populate virtuals
 branchSchema.virtual('vendor', {

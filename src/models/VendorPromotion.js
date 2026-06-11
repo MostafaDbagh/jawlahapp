@@ -47,6 +47,9 @@ const vendorPromotionSchema = new mongoose.Schema({
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
 });
 
+// Customer read path: find({ vendor_id, is_active }).sort({ sort_order: 1, created_at: -1 }).
+vendorPromotionSchema.index({ vendor_id: 1, is_active: 1, sort_order: 1, created_at: -1 });
+
 attachCommon(vendorPromotionSchema);
 
 module.exports = mongoose.models.VendorPromotion || mongoose.model('VendorPromotion', vendorPromotionSchema);

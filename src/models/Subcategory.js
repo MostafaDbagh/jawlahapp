@@ -89,6 +89,9 @@ subcategorySchema.methods.getActiveOffers = function getActiveOffers() {
   });
 };
 
+// Branch-detail tabs: find({ branch_id, is_active }).sort({ sort_order: 1 }).
+subcategorySchema.index({ branch_id: 1, is_active: 1, sort_order: 1 });
+
 attachCommon(subcategorySchema);
 
 module.exports = mongoose.models.Subcategory || mongoose.model('Subcategory', subcategorySchema);

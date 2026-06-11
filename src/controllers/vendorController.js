@@ -1,5 +1,6 @@
 const { Vendor, Branch } = require('../models');
 const ResponseHelper = require('../utils/responseHelper');
+const { buildVendorStats, vendorStat } = require('../utils/listStats');
 
 const ADMIN_TYPES = ['PLATFORM_OWNER', 'PLATFORM_ADMIN'];
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -45,21 +46,14 @@ class VendorController {
         Vendor.countDocuments(query)
       ]);
 
-      // Add branch count and average rating for each vendor
-      const vendorsWithDetails = await Promise.all(
-        vendors.map(async (vendor) => {
-          const branchCount = await vendor.getActiveBranchesCount();
-          const rating = await vendor.getAverageRating();
-
-          return {
-            ...vendor.toJSON(),
-            branch_count: branchCount,
-            average_rating: rating.averageRating,
-            total_reviews: rating.totalReviews,
-            is_subscription_active: vendor.isSubscriptionActive()
-          };
-        })
-      );
+      // Branch count + average rating for the whole page in a couple of
+      // batched queries (instead of 3 queries per vendor).
+      const stats = await buildVendorStats(vendors.map((v) => v.id));
+      const vendorsWithDetails = vendors.map((vendor) => ({
+        ...vendor.toJSON(),
+        ...vendorStat(stats, vendor.id),
+        is_subscription_active: vendor.isSubscriptionActive()
+      }));
 
       return ResponseHelper.list(res, vendorsWithDetails, count, 'Vendors retrieved successfully');
     } catch (error) {
@@ -133,19 +127,12 @@ class VendorController {
     try {
       const vendors = await Vendor.find({ owner_user_id: req.user.user_id }).sort({ created_at: -1 });
 
-      const vendorsWithDetails = await Promise.all(
-        vendors.map(async (vendor) => {
-          const branchCount = await vendor.getActiveBranchesCount();
-          const rating = await vendor.getAverageRating();
-          return {
-            ...vendor.toJSON(),
-            branch_count: branchCount,
-            average_rating: rating.averageRating,
-            total_reviews: rating.totalReviews,
-            is_subscription_active: vendor.isSubscriptionActive()
-          };
-        })
-      );
+      const stats = await buildVendorStats(vendors.map((v) => v.id));
+      const vendorsWithDetails = vendors.map((vendor) => ({
+        ...vendor.toJSON(),
+        ...vendorStat(stats, vendor.id),
+        is_subscription_active: vendor.isSubscriptionActive()
+      }));
 
       return ResponseHelper.list(res, vendorsWithDetails, vendorsWithDetails.length, 'My restaurants retrieved successfully');
     } catch (error) {
@@ -304,20 +291,12 @@ class VendorController {
         approval_status: { $nin: ['pending', 'rejected'] }
       }).limit(parseInt(limit));
 
-      const vendorsWithRatings = await Promise.all(
-        vendors.map(async (vendor) => {
-          const branchCount = await vendor.getActiveBranchesCount();
-          const rating = await vendor.getAverageRating();
-
-          return {
-            ...vendor.toJSON(),
-            branch_count: branchCount,
-            average_rating: rating.averageRating,
-            total_reviews: rating.totalReviews,
-            is_subscription_active: vendor.isSubscriptionActive()
-          };
-        })
-      );
+      const stats = await buildVendorStats(vendors.map((v) => v.id));
+      const vendorsWithRatings = vendors.map((vendor) => ({
+        ...vendor.toJSON(),
+        ...vendorStat(stats, vendor.id),
+        is_subscription_active: vendor.isSubscriptionActive()
+      }));
 
       // Featured first, then by rating and review count.
       const popularVendors = vendorsWithRatings

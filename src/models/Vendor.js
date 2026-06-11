@@ -150,6 +150,10 @@ vendorSchema.methods.getAverageRating = async function getAverageRating() {
   };
 };
 
+// Customer vendor list: find({ is_active, approval_status })
+//   .sort({ is_featured: -1, created_at: -1 }).
+vendorSchema.index({ is_active: 1, approval_status: 1, is_featured: -1, created_at: -1 });
+
 attachCommon(vendorSchema);
 
 module.exports = mongoose.models.Vendor || mongoose.model('Vendor', vendorSchema);

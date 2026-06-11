@@ -141,7 +141,10 @@ productSchema.methods.getActiveOffers = function getActiveOffers() {
   });
 };
 
-productSchema.methods.getFinalPrice = async function getFinalPrice() {
+// Pure price computation given the product's already-fetched active offers.
+// List endpoints fetch offers in bulk and call this so each product isn't
+// issuing its own offer query.
+productSchema.methods.computeFinalPrice = function computeFinalPrice(offers = []) {
   let finalPrice = parseFloat(this.price);
 
   // Merchant's own percentage discount, applied before any campaign offers.
@@ -150,7 +153,6 @@ productSchema.methods.getFinalPrice = async function getFinalPrice() {
     finalPrice = finalPrice * (1 - Math.min(pct, 100) / 100);
   }
 
-  const offers = await this.getActiveOffers();
   for (const offer of offers) {
     if (offer.type === 'percentage') {
       finalPrice = finalPrice * (1 - offer.value / 100);
@@ -163,6 +165,16 @@ productSchema.methods.getFinalPrice = async function getFinalPrice() {
   // produces a sub-unit price (and never undercharges).
   return Math.ceil(Math.max(0, finalPrice));
 };
+
+productSchema.methods.getFinalPrice = async function getFinalPrice() {
+  return this.computeFinalPrice(await this.getActiveOffers());
+};
+
+// Menu page: find({ branch_id, is_active, is_available }).sort({ created_at: -1 }).
+// One compound index covers both the filter and the sort (avoids an in-memory sort).
+productSchema.index({ branch_id: 1, is_active: 1, is_available: 1, created_at: -1 });
+// Subcategory menu tab: find({ branch_id, subcategory_id, is_active }).
+productSchema.index({ branch_id: 1, subcategory_id: 1, is_active: 1 });
 
 attachCommon(productSchema);
 

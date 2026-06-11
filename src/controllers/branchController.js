@@ -1,5 +1,6 @@
 const { Branch, Vendor, Offer } = require('../models');
 const ResponseHelper = require('../utils/responseHelper');
+const { buildBranchRatings, buildActiveOfferEntitySet } = require('../utils/listStats');
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -98,42 +99,38 @@ class BranchController {
         Branch.countDocuments(query)
       ]);
 
-      // Calculate ratings and apply filters
-      const branchesWithRatings = await Promise.all(
-        branches.map(async (branch) => {
-          // When filtering by category, only keep branches that have a matching subcategory
-          if (category_id && (!branch.subcategories || branch.subcategories.length === 0)) {
-            return null;
-          }
+      // Ratings for the whole page in one aggregation; active-offer ids in one
+      // query (only when the has_offer filter is on) — instead of per branch.
+      const branchRatings = await buildBranchRatings(branches.map((b) => b.id));
+      const offerBranchIds = has_offer === 'true'
+        ? await buildActiveOfferEntitySet('branch', branches.map((b) => b.id))
+        : null;
 
-          const rating = await branch.getAverageRating();
+      const branchesWithRatings = branches.map((branch) => {
+        // When filtering by category, only keep branches that have a matching subcategory
+        if (category_id && (!branch.subcategories || branch.subcategories.length === 0)) {
+          return null;
+        }
 
-          // Apply rating filter
-          if (min_rating && rating.averageRating < parseFloat(min_rating)) {
-            return null;
-          }
+        const rating = branchRatings[branch.id] || { averageRating: 0, totalReviews: 0 };
 
-          // Apply offer filter
-          if (has_offer === 'true') {
-            const now = new Date();
-            const hasActiveOffer = await Offer.findOne({
-              entity_type: 'branch',
-              entity_id: branch.id,
-              is_active: true,
-              start_date: { $lte: now },
-              end_date: { $gte: now }
-            });
-            if (!hasActiveOffer) return null;
-          }
+        // Apply rating filter
+        if (min_rating && rating.averageRating < parseFloat(min_rating)) {
+          return null;
+        }
 
-          return {
-            ...branch.toJSON(),
-            rating: rating.averageRating,
-            total_reviews: rating.totalReviews,
-            is_open: branch.isOpen()
-          };
-        })
-      );
+        // Apply offer filter
+        if (offerBranchIds && !offerBranchIds.has(branch.id)) {
+          return null;
+        }
+
+        return {
+          ...branch.toJSON(),
+          rating: rating.averageRating,
+          total_reviews: rating.totalReviews,
+          is_open: branch.isOpen()
+        };
+      });
 
       const filteredBranches = branchesWithRatings.filter((branch) => branch !== null);
 
@@ -165,34 +162,38 @@ class BranchController {
       const lngFloat = parseFloat(finalLng);
       const radiusFloat = parseFloat(radius);
 
-      // Calculate distance for each branch
-      const branches = await Branch.find({ is_active: true })
-        .populate({ path: 'vendor', select: 'id name image cuisines' });
+      // Pre-filter with a bounding box so we don't load the entire branch
+      // collection, then refine by true haversine distance in JS.
+      const latRange = radiusFloat / 111; // approx km per degree latitude
+      const lngRange = radiusFloat / (111 * Math.cos(latFloat * Math.PI / 180));
+      const branches = await Branch.find({
+        is_active: true,
+        lat: { $gte: latFloat - latRange, $lte: latFloat + latRange },
+        lng: { $gte: lngFloat - lngRange, $lte: lngFloat + lngRange }
+      }).populate({ path: 'vendor', select: 'id name image cuisines' });
 
-      const branchesWithDistance = await Promise.all(
-        branches.map(async (branch) => {
-          const distance = BranchController.calculateDistance(
-            latFloat, lngFloat, branch.lat, branch.lng
-          );
-
-          if (distance <= radiusFloat) {
-            const rating = await branch.getAverageRating();
-            return {
-              ...branch.toJSON(),
-              distance: Math.round(distance * 100) / 100,
-              rating: rating.averageRating,
-              total_reviews: rating.totalReviews,
-              is_open: branch.isOpen()
-            };
-          }
-          return null;
-        })
-      );
-
-      const nearbyBranches = branchesWithDistance
-        .filter((branch) => branch !== null)
+      // Keep those within the true radius, nearest first, capped to the limit —
+      // then fetch ratings only for that final set (one aggregation).
+      const withinRadius = branches
+        .map((branch) => ({
+          branch,
+          distance: BranchController.calculateDistance(latFloat, lngFloat, branch.lat, branch.lng)
+        }))
+        .filter((x) => x.distance <= radiusFloat)
         .sort((a, b) => a.distance - b.distance)
         .slice(0, parseInt(limit));
+
+      const ratings = await buildBranchRatings(withinRadius.map((x) => x.branch.id));
+      const nearbyBranches = withinRadius.map(({ branch, distance }) => {
+        const rating = ratings[branch.id] || { averageRating: 0, totalReviews: 0 };
+        return {
+          ...branch.toJSON(),
+          distance: Math.round(distance * 100) / 100,
+          rating: rating.averageRating,
+          total_reviews: rating.totalReviews,
+          is_open: branch.isOpen()
+        };
+      });
 
       return ResponseHelper.list(res, nearbyBranches, nearbyBranches.length, 'Nearby branches retrieved successfully');
     } catch (error) {
@@ -208,20 +209,20 @@ class BranchController {
 
       const branches = await Branch.find({ is_active: true })
         .populate({ path: 'vendor', select: 'id name image cuisines' })
-        .populate({ path: 'reviews', select: 'rating' })
         .limit(parseInt(limit));
 
-      const branchesWithRatings = await Promise.all(
-        branches.map(async (branch) => {
-          const rating = await branch.getAverageRating();
-          return {
-            ...branch.toJSON(),
-            rating: rating.averageRating,
-            total_reviews: rating.totalReviews,
-            is_open: branch.isOpen()
-          };
-        })
-      );
+      // One ratings aggregation for the page (the previous `reviews` populate
+      // loaded every review per branch and was then ignored).
+      const ratings = await buildBranchRatings(branches.map((b) => b.id));
+      const branchesWithRatings = branches.map((branch) => {
+        const rating = ratings[branch.id] || { averageRating: 0, totalReviews: 0 };
+        return {
+          ...branch.toJSON(),
+          rating: rating.averageRating,
+          total_reviews: rating.totalReviews,
+          is_open: branch.isOpen()
+        };
+      });
 
       // Sort by rating and review count
       const popularBranches = branchesWithRatings

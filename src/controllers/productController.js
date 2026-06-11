@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const { Product, Branch, Subcategory, ProductVariation, Vendor } = require('../models');
 const ResponseHelper = require('../utils/responseHelper');
+const { buildActiveOffersByEntity } = require('../utils/listStats');
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -112,17 +113,19 @@ class ProductController {
         Product.countDocuments(query)
       ]);
 
-      // Add final price and offers for each product
-      const productsWithDetails = await Promise.all(
-        products.map(async (product) => {
-          const finalPrice = await product.getFinalPrice();
-          const activeOffers = await product.getActiveOffers();
+      // Fetch all active offers for this page in one query, then price each
+      // product from its offers (no per-product offer query).
+      const offersByProduct = await buildActiveOffersByEntity('product', products.map((p) => p.id));
+      const productsWithDetails = products
+        .map((product) => {
+          const activeOffers = offersByProduct[product.id] || [];
 
           // Apply offer filter
           if (has_offer === 'true' && activeOffers.length === 0) {
             return null;
           }
 
+          const finalPrice = product.computeFinalPrice(activeOffers);
           return {
             ...product.toJSON(),
             final_price: finalPrice,
@@ -130,9 +133,9 @@ class ProductController {
             has_discount: finalPrice < parseFloat(product.price)
           };
         })
-      );
+        .filter((product) => product !== null);
 
-      const filteredProducts = productsWithDetails.filter((product) => product !== null);
+      const filteredProducts = productsWithDetails;
 
       return ResponseHelper.list(res, filteredProducts, count, 'Branch products retrieved successfully');
     } catch (error) {
@@ -175,17 +178,16 @@ class ProductController {
         Product.countDocuments(query)
       ]);
 
-      // Add final price for each product
-      const productsWithDetails = await Promise.all(
-        products.map(async (product) => {
-          const finalPrice = await product.getFinalPrice();
-          return {
-            ...product.toJSON(),
-            final_price: finalPrice,
-            has_discount: finalPrice < parseFloat(product.price)
-          };
-        })
-      );
+      // One offer query for the whole page; price each product from its offers.
+      const offersByProduct = await buildActiveOffersByEntity('product', products.map((p) => p.id));
+      const productsWithDetails = products.map((product) => {
+        const finalPrice = product.computeFinalPrice(offersByProduct[product.id] || []);
+        return {
+          ...product.toJSON(),
+          final_price: finalPrice,
+          has_discount: finalPrice < parseFloat(product.price)
+        };
+      });
 
       return ResponseHelper.list(res, productsWithDetails, count, 'Subcategory products retrieved successfully');
     } catch (error) {
@@ -208,8 +210,8 @@ class ProductController {
         return ResponseHelper.error(res, 'Product not found', 404);
       }
 
-      const finalPrice = await product.getFinalPrice();
       const activeOffers = await product.getActiveOffers();
+      const finalPrice = product.computeFinalPrice(activeOffers);
 
       const productData = {
         ...product.toJSON(),
