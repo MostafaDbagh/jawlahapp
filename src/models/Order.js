@@ -11,7 +11,9 @@ const orderItemSchema = new mongoose.Schema({
   image: { type: String, default: null },
   unit_price: { type: Number, required: true, default: 0 },
   qty: { type: Number, required: true, default: 1 },
-  options: { type: mongoose.Schema.Types.Mixed, default: null }
+  options: { type: mongoose.Schema.Types.Mixed, default: null },
+  // Customer's free-text request for this line, copied from the cart.
+  note: { type: String, default: null }
 }, { _id: false });
 
 const timelineStepSchema = new mongoose.Schema({

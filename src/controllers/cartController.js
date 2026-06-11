@@ -91,10 +91,15 @@ class CartController {
     }
   }
 
-  // POST /cart/items  { product_id, qty?, variation_id?, options? }
+  // POST /cart/items  { product_id, qty?, variation_id?, options?, note? }
   async addItem(req, res) {
     try {
-      const { product_id, qty = 1, variation_id = null, options = null } = req.body;
+      const { product_id, qty = 1, variation_id = null, options = null, note = null } = req.body;
+
+      // Free-text special request for this line ("extra garlic, no pomegranate
+      // sauce"). Trimmed and capped; it never affects the price.
+      const lineNote =
+        typeof note === 'string' && note.trim() ? note.trim().slice(0, 300) : null;
 
       if (!product_id) {
         return res.status(400).json(ResponseHelper.error('product_id is required', null, 0));
@@ -135,12 +140,15 @@ class CartController {
         cartReset = true;
       }
 
-      // Merge with an existing identical line (same product + variation + add-ons).
+      // Merge with an existing identical line (same product + variation +
+      // add-ons + note). A different note keeps its own line so the kitchen
+      // sees each request against the right quantity.
       const existing = cart.items.find(
         (it) =>
           it.product_id === product_id &&
           it.variation_id === variation_id &&
-          optionsSignature(it.options) === optionsSig
+          optionsSignature(it.options) === optionsSig &&
+          (it.note || null) === lineNote
       );
       if (existing) {
         existing.qty += Number(qty) || 1;
@@ -153,7 +161,8 @@ class CartController {
           image: product.image,
           unit_price: unitPrice,
           qty: Number(qty) || 1,
-          options: lineOptions
+          options: lineOptions,
+          note: lineNote
         });
       }
 

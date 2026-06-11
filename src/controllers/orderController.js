@@ -168,7 +168,8 @@ class OrderController {
           image: it.image,
           unit_price: it.unit_price,
           qty: it.qty,
-          options: it.options
+          options: it.options,
+          note: it.note ?? null
         })),
         subtotal: Math.round(subtotal * 100) / 100,
         delivery_fee: deliveryFee,

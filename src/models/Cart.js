@@ -16,7 +16,10 @@ const cartItemSchema = new mongoose.Schema({
   unit_price: { type: Number, required: true, default: 0 },
   qty: { type: Number, required: true, default: 1, min: 1 },
   // Free-form selected options/add-ons (e.g. [{ name, price }])
-  options: { type: mongoose.Schema.Types.Mixed, default: null }
+  options: { type: mongoose.Schema.Types.Mixed, default: null },
+  // Customer's free-text request for this line (e.g. "extra garlic, no
+  // pomegranate sauce"). Informational only — never affects pricing.
+  note: { type: String, default: null }
 }, { _id: false });
 
 const cartSchema = new mongoose.Schema({
