@@ -24,6 +24,7 @@ const complaintRoutes = require('./complaint/complaintRoutes');
 const contactRoutes = require('./contact/contactRoutes');
 const promotionRoutes = require('./promotion/promotionRoutes');
 const vendorPromotionRoutes = require('./vendorPromotion/vendorPromotionRoutes');
+const favoriteRoutes = require('./favorite/favoriteRoutes');
 const ResponseHelper = require('../utils/responseHelper');
 
 // Health check route
@@ -56,6 +57,7 @@ router.use('/api/v1/complaints', complaintRoutes);
 router.use('/api/v1/contact', contactRoutes);
 router.use('/api/v1/promotions', promotionRoutes);
 router.use('/api/v1/vendor-promotions', vendorPromotionRoutes);
+router.use('/api/v1/favorites', favoriteRoutes);
 
 // Mobile app: POST /api/v1/saveToken (FCM / Firebase token + optional device info)
 router.post(
