@@ -11,6 +11,15 @@ const MONGO_URI =
 // Reuse a single connection across serverless invocations (Vercel)
 let connectionPromise = null;
 
+// Lifecycle breadcrumbs — without these a dropped Atlas connection is
+// invisible in the logs until queries start buffer-timing out.
+mongoose.connection.on('disconnected', () => {
+  console.warn('⚠️ MongoDB disconnected');
+});
+mongoose.connection.on('reconnected', () => {
+  console.log('✅ MongoDB reconnected');
+});
+
 const connectDB = async () => {
   try {
     if (mongoose.connection.readyState === 1) {

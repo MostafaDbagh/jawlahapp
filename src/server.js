@@ -1,6 +1,6 @@
 
 const app = require('./app');
-const { connectDB } = require('./config/database');
+const { mongoose, connectDB } = require('./config/database');
 const { initDatabase } = require('./config/initDb');
 const otpService = require('./utils/otpService');
 const dispatchService = require('./services/dispatchService');
@@ -51,20 +51,28 @@ const startServer = async () => {
     console.log('- DATABASE_URL exists:', !!process.env.DATABASE_URL);
     console.log('- JWT_SECRET exists:', !!process.env.JWT_SECRET);
     
-    // Try to connect to database, but don't fail if it doesn't work
-    if (modelsLoaded) {
+    // Try to connect to database, but don't block startup if it doesn't work.
+    // A failed boot-time connect (slow Atlas on a cold start, transient DNS)
+    // must NOT leave the instance permanently DB-less — every query would
+    // buffer-timeout until the next restart — so keep retrying in the
+    // background until the connection lands.
+    const ensureDbConnected = async () => {
       try {
         console.log('📡 Connecting to database...');
         await connectDB();
-        
+
         // Initialize database schema
         console.log('🗄️ Initializing database...');
         await initDatabase();
         console.log('✅ Database connected and initialized');
       } catch (dbError) {
         console.error('⚠️ Database connection failed:', dbError.message);
-        console.log('🔄 Starting server without database connection...');
+        console.log('🔄 Serving without DB; retrying connection in 15s...');
+        setTimeout(ensureDbConnected, 15000);
       }
+    };
+    if (modelsLoaded) {
+      await ensureDbConnected();
     } else {
       console.log('🔄 Starting server without database connection (models not loaded)...');
     }
@@ -96,8 +104,14 @@ const startServer = async () => {
       });
     });
 
+    // Periodic jobs only make sense against a live DB connection. When the
+    // DB is down (cold start, Atlas blip) skip the tick instead of issuing a
+    // query that buffers for 10s and floods the log with timeout errors.
+    const dbIsConnected = () => mongoose.connection.readyState === 1;
+
     // Clean up expired OTPs every hour
     setInterval(async () => {
+      if (!dbIsConnected()) return;
       try {
         await otpService.cleanupExpiredOTPs();
       } catch (error) {
@@ -109,6 +123,7 @@ const startServer = async () => {
     // best driver. BEST-EFFORT only — lazy expiry on the offer/accept/poll
     // filters is the real never-stuck guarantee; this just speeds up cascades.
     setInterval(async () => {
+      if (!dbIsConnected()) return;
       try {
         await dispatchService.sweepExpired();
       } catch (error) {
