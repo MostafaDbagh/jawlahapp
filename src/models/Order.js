@@ -4,6 +4,33 @@ const { attachCommon } = require('./baseSchema');
 
 const ORDER_STATUSES = ['pending', 'preparing', 'ready', 'on_the_way', 'delivered', 'cancelled'];
 
+// Jawlaha Box = errand/courier orders (Careem-Box style): the driver buys/picks
+// up free-text items from non-restaurant places and delivers, COD. See
+// JAWLAHA_BOX.md. A box order's `branch_id`/`vendor_name` stay null; its detail
+// lives in the `box` sub-document below.
+const ORDER_TYPES = ['restaurant', 'box'];
+
+// One free-text errand item the driver must buy/fetch. `actual_price` is filled
+// by the driver while shopping; `status` tracks bought vs not-found.
+const boxItemSchema = new mongoose.Schema({
+  description: { type: String, required: true },
+  qty: { type: Number, default: 1, min: 1 },
+  category: { type: String, default: null },   // grocery | cleaning | pharmacy | documents | other
+  note: { type: String, default: null },
+  stop_index: { type: Number, default: 0 },    // which pickup stop this item belongs to
+  status: { type: String, enum: ['pending', 'bought', 'not_found'], default: 'pending' },
+  actual_price: { type: Number, default: null }
+}, { _id: false });
+
+// One pickup place for a box order (a shop/office, never a listed restaurant).
+const boxStopSchema = new mongoose.Schema({
+  place_name: { type: String, required: true },
+  address: { type: String, default: null },
+  lat: { type: Number, default: null },
+  lng: { type: Number, default: null },
+  note: { type: String, default: null }
+}, { _id: false });
+
 const orderItemSchema = new mongoose.Schema({
   product_id: { type: String, default: null },
   variation_id: { type: String, default: null },
@@ -53,9 +80,26 @@ const orderSchema = new mongoose.Schema({
     index: true
   },
   user_id: { type: String, required: true, index: true },
+  // 'restaurant' (default) = a normal menu order; 'box' = a Jawlaha Box errand.
+  order_type: { type: String, enum: ORDER_TYPES, default: 'restaurant', index: true },
   branch_id: { type: String, default: null, index: true },
   vendor_name: { type: String, default: null },
   items: { type: [orderItemSchema], default: [] },
+
+  // Jawlaha Box payload (null for restaurant orders). `service_fee` is the
+  // platform's revenue (resolved server-side); `purchases_total` is the cash the
+  // driver fronted for the items; the COD total = purchases_total + service_fee.
+  box: {
+    type: new mongoose.Schema({
+      stops: { type: [boxStopSchema], default: [] },
+      items: { type: [boxItemSchema], default: [] },
+      budget_cap: { type: Number, default: 0 },     // customer's max spend on goods
+      service_fee: { type: Number, default: 0 },     // platform fee (server-computed)
+      purchases_total: { type: Number, default: 0 }, // sum of bought items' actual_price
+      instructions: { type: String, default: null }
+    }, { _id: false }),
+    default: null
+  },
 
   subtotal: { type: Number, required: true, default: 0 },
   delivery_fee: { type: Number, default: 0 },
@@ -147,3 +191,4 @@ attachCommon(orderSchema);
 
 module.exports = mongoose.models.Order || mongoose.model('Order', orderSchema);
 module.exports.ORDER_STATUSES = ORDER_STATUSES;
+module.exports.ORDER_TYPES = ORDER_TYPES;

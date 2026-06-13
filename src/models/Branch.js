@@ -130,6 +130,30 @@ branchSchema.methods.getAverageRating = async function getAverageRating() {
   };
 };
 
+// A short human-readable hours string for the customer app (e.g. "09:00 - 23:00").
+// The merchant UI sets one open/close range applied to every day, so the common
+// case is a single uniform range; if days differ we fall back to today's hours.
+// Returns null when no schedule is set (the app then hides the hours line).
+branchSchema.methods.getOpeningHoursText = function getOpeningHoursText() {
+  if (!this.work_time) return null;
+  const shortDays = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  const longDays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+  const ranges = shortDays
+    .map((d, i) => this.work_time[d] || this.work_time[longDays[i]])
+    .filter(Boolean);
+  if (ranges.length === 0) return null;
+
+  const fmt = (range) => String(range).replace('-', ' - ');
+  // All set days share the same range → show it once.
+  if (ranges.every((r) => r === ranges[0])) return fmt(ranges[0]);
+
+  // Mixed schedule → show today's hours if set, else the first day with hours.
+  const idx = new Date().getDay();
+  const today = this.work_time[shortDays[idx]] || this.work_time[longDays[idx]];
+  return fmt(today || ranges[0]);
+};
+
 branchSchema.methods.isOpen = function isOpen() {
   if (!this.work_time) return true;
 
@@ -151,6 +175,20 @@ branchSchema.methods.isOpen = function isOpen() {
     return currentTime >= openTime || currentTime <= closeTime;
   }
   return currentTime >= openTime && currentTime <= closeTime;
+};
+
+// Today's closing time ("HH:MM") from the schedule, so the app can show
+// "open · closes at 23:30". Null when there's no schedule today (or none at all,
+// i.e. always open). Mirrors isOpen()'s day lookup.
+branchSchema.methods.getClosesAt = function getClosesAt() {
+  if (!this.work_time) return null;
+  const shortDays = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  const longDays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const idx = new Date().getDay();
+  const daySchedule = this.work_time[shortDays[idx]] || this.work_time[longDays[idx]];
+  if (!daySchedule) return null;
+  const closeTime = String(daySchedule).split('-')[1];
+  return closeTime || null;
 };
 
 attachCommon(branchSchema);

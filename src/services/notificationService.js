@@ -192,10 +192,70 @@ async function notifyDriverOrderCancelled(order) {
   }
 }
 
+// Notify the restaurant owner AND every platform admin that a customer left a
+// review (good or bad) for one of the restaurant's branches. Fire-and-forget;
+// the review is already persisted by the time this runs. `vendor` is the owning
+// Vendor (for owner_user_id + name), `branch` the reviewed Branch.
+const REVIEW_ADMIN_TYPES = ['PLATFORM_OWNER', 'PLATFORM_ADMIN'];
+
+async function notifyReviewCreated({ review, branch, vendor }) {
+  try {
+    if (!review) return { ok: false, reason: 'skip' };
+    const stars = '★'.repeat(review.rating) + '☆'.repeat(5 - review.rating);
+    const place = (vendor && vendor.name) || (branch && branch.name) || '';
+    const snippet = review.comment
+      ? (review.comment.length > 80 ? `${review.comment.slice(0, 80)}…` : review.comment)
+      : '';
+
+    // Recipients: the restaurant owner + all admins. De-duped by user_id so an
+    // owner who is also an admin isn't notified twice.
+    const recipientIds = new Set();
+    if (vendor && vendor.owner_user_id) recipientIds.add(vendor.owner_user_id);
+    const admins = await User.find({ account_type: { $in: REVIEW_ADMIN_TYPES }, is_active: true })
+      .select('user_id fcm_token preferred_language')
+      .lean();
+    admins.forEach((a) => recipientIds.add(a.user_id));
+    if (recipientIds.size === 0) return { ok: false, reason: 'no-recipients' };
+
+    const adminById = new Map(admins.map((a) => [a.user_id, a]));
+    const results = await Promise.all(
+      [...recipientIds].map(async (uid) => {
+        const user = adminById.get(uid)
+          || (await User.findOne({ user_id: uid }).select('user_id fcm_token preferred_language').lean());
+        if (!user) return { ok: false, reason: 'no-user' };
+        const lang = pickLang(user);
+        const title = lang === 'en'
+          ? `New ${review.rating}★ review${place ? ` · ${place}` : ''}`
+          : `تقييم جديد ${review.rating}★${place ? ` · ${place}` : ''}`;
+        const message = snippet
+          ? `${stars}  ${snippet}`
+          : (lang === 'en' ? `${stars}  (no comment)` : `${stars}  (بدون تعليق)`);
+        return deliver(user, {
+          type: 'review',
+          title,
+          message,
+          data: {
+            kind: 'review',
+            review_id: review.id,
+            branch_id: review.branch_id,
+            vendor_id: vendor ? vendor.id : '',
+            rating: String(review.rating)
+          }
+        });
+      })
+    );
+    return { ok: true, delivered: results.filter((r) => r && r.ok).length };
+  } catch (e) {
+    console.error('notifyReviewCreated error:', e.message);
+    return { ok: false, reason: 'error' };
+  }
+}
+
 module.exports = {
   notify,
   notifyOrderStatus,
   notifyDriverOffer,
   notifyDriverAssigned,
-  notifyDriverOrderCancelled
+  notifyDriverOrderCancelled,
+  notifyReviewCreated
 };

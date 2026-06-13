@@ -1,5 +1,7 @@
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
+const Branch = require('../models/Branch');
+const PlatformSetting = require('../models/PlatformSetting');
 const ResponseHelper = require('../utils/responseHelper');
 
 // Returns the user's cart document, creating an empty one if missing.
@@ -11,10 +13,31 @@ async function getOrCreateCart(userId) {
   return cart;
 }
 
-function serialize(cart) {
+// Cart with computed totals. The delivery fee is company-controlled (admin-set,
+// and can be higher for farther cities) and resolved server-side from the cart's
+// branch city — plus the free-delivery threshold — so the total quoted in the
+// app always matches what checkout will actually charge.
+async function serialize(cart) {
+  const summary = cart.getSummary();
+  let deliveryFee = 0;
+  const branchId = cart.items[0] && cart.items[0].branch_id;
+  if (branchId && summary.subtotal > 0) {
+    const [settings, branch] = await Promise.all([
+      PlatformSetting.getSingleton(),
+      Branch.findOne({ id: branchId }).select('city')
+    ]);
+    deliveryFee = settings.resolveDeliveryFee(branch && branch.city);
+    if (settings.free_delivery_min_subtotal > 0 && summary.subtotal >= settings.free_delivery_min_subtotal) {
+      deliveryFee = 0;
+    }
+  }
   return {
     ...cart.toObject(),
-    summary: cart.getSummary()
+    summary: {
+      ...summary,
+      delivery_fee: deliveryFee,
+      total: Math.round((summary.subtotal + deliveryFee) * 100) / 100
+    }
   };
 }
 
@@ -84,7 +107,7 @@ class CartController {
   async getCart(req, res) {
     try {
       const cart = await getOrCreateCart(req.user.user_id);
-      res.json(ResponseHelper.success(serialize(cart), 'Cart retrieved successfully', 1));
+      res.json(ResponseHelper.success(await serialize(cart), 'Cart retrieved successfully', 1));
     } catch (error) {
       console.error('Get cart error:', error);
       res.status(500).json(ResponseHelper.error('Failed to get cart', error.message, 0));
@@ -169,7 +192,7 @@ class CartController {
       await cart.save();
       res.json(
         ResponseHelper.success(
-          { ...serialize(cart), cart_reset: cartReset },
+          { ...(await serialize(cart)), cart_reset: cartReset },
           cartReset ? 'Started a new cart from this restaurant' : 'Item added to cart',
           1
         )
@@ -204,7 +227,7 @@ class CartController {
       }
 
       await cart.save();
-      res.json(ResponseHelper.success(serialize(cart), 'Cart updated', 1));
+      res.json(ResponseHelper.success(await serialize(cart), 'Cart updated', 1));
     } catch (error) {
       console.error('Update cart item error:', error);
       res.status(500).json(ResponseHelper.error('Failed to update item', error.message, 0));
@@ -220,7 +243,7 @@ class CartController {
       if (targetIdx < 0) targetIdx = cart.items.findIndex((it) => it.product_id === lineKey);
       if (targetIdx >= 0) cart.items.splice(targetIdx, 1);
       await cart.save();
-      res.json(ResponseHelper.success(serialize(cart), 'Item removed from cart', 1));
+      res.json(ResponseHelper.success(await serialize(cart), 'Item removed from cart', 1));
     } catch (error) {
       console.error('Remove cart item error:', error);
       res.status(500).json(ResponseHelper.error('Failed to remove item', error.message, 0));
@@ -233,7 +256,7 @@ class CartController {
       const cart = await getOrCreateCart(req.user.user_id);
       cart.items = [];
       await cart.save();
-      res.json(ResponseHelper.success(serialize(cart), 'Cart cleared', 1));
+      res.json(ResponseHelper.success(await serialize(cart), 'Cart cleared', 1));
     } catch (error) {
       console.error('Clear cart error:', error);
       res.status(500).json(ResponseHelper.error('Failed to clear cart', error.message, 0));

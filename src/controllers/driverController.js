@@ -237,6 +237,69 @@ class DriverController {
     }
   }
 
+  // PATCH /driver/orders/:id/box-purchases — the assigned driver logs the actual
+  // price (or not-found) of each Box item while shopping. Recomputes the COD
+  // total (purchases + service fee). Purchases can't exceed the customer's budget
+  // cap unless the customer approved going over (over_cap_approved).
+  async submitBoxPurchases(req, res) {
+    try {
+      const order = await Order.findOne({ order_id: req.params.id });
+      if (!order) return res.status(404).json(ResponseHelper.error('Order not found', null, 0));
+      if (order.order_type !== 'box' || !order.box) {
+        return res.status(400).json(ResponseHelper.error('Not a Box order', null, 0));
+      }
+      if (order.driver_user_id !== req.user.user_id) {
+        return res.status(403).json(ResponseHelper.error('This order is not assigned to you', null, 0));
+      }
+      if (!['ready', 'on_the_way'].includes(order.status)) {
+        return res.status(400).json(ResponseHelper.error('Purchases can only be logged while the order is in progress', null, 0));
+      }
+
+      const updates = Array.isArray(req.body.items) ? req.body.items : [];
+      for (const u of updates) {
+        const idx = Number(u.index);
+        if (!Number.isInteger(idx) || idx < 0 || idx >= order.box.items.length) continue;
+        const item = order.box.items[idx];
+        if (u.status === 'not_found') {
+          item.status = 'not_found';
+          item.actual_price = null;
+        } else if (u.actual_price != null) {
+          const price = Number(u.actual_price);
+          if (!Number.isFinite(price) || price < 0) {
+            return res.status(400).json(ResponseHelper.error(`Invalid price for item ${idx + 1}`, null, 0));
+          }
+          item.status = 'bought';
+          item.actual_price = Math.round(price);
+        }
+      }
+
+      const purchases = order.box.items
+        .filter((it) => it.status === 'bought')
+        .reduce((s, it) => s + (Number(it.actual_price) || 0), 0);
+
+      // Budget guard: the driver can't overspend the customer's cap without an
+      // explicit in-app approval from the customer (over_cap_approved).
+      if (purchases > order.box.budget_cap && !req.body.over_cap_approved) {
+        return res.status(409).json(ResponseHelper.error(
+          'Purchases exceed the customer budget — customer approval required',
+          { budget_cap: order.box.budget_cap, purchases_total: purchases },
+          0
+        ));
+      }
+
+      order.box.purchases_total = purchases;
+      order.subtotal = purchases;
+      order.total = purchases + (Number(order.box.service_fee) || 0);
+      order.markModified('box');
+      await order.save();
+
+      res.json(ResponseHelper.success(order, 'Purchases updated', 1));
+    } catch (error) {
+      console.error('Submit box purchases error:', error);
+      res.status(500).json(ResponseHelper.error('Failed to update purchases', error.message, 0));
+    }
+  }
+
   // GET /driver/me/stats — delivery counts + earnings (driver keeps the
   // delivery fee). Today's figures + lifetime totals.
   async getStats(req, res) {

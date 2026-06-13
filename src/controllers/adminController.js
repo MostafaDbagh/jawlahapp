@@ -10,6 +10,11 @@ const Promotion = require('../models/Promotion');
 const PlatformSetting = require('../models/PlatformSetting');
 const ResponseHelper = require('../utils/responseHelper');
 const dispatchService = require('../services/dispatchService');
+const { sendCSV, iso, num } = require('../utils/csv');
+
+// Hard cap on rows pulled into a single CSV export (audit downloads). Far above
+// any realistic month's data; protects memory from a runaway/no-filter export.
+const EXPORT_MAX = 100000;
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -444,6 +449,149 @@ class AdminController {
     }
   }
 
+  // GET /admin/orders/export — full (unpaginated) orders CSV for the accountant.
+  // Honours the same status/group/branch/date/search filters as the list so the
+  // admin exports exactly what they're viewing. Money is raw numbers, dates ISO.
+  async exportOrders(req, res) {
+    try {
+      const { status, group, search, branch_id, date_from, date_to } = req.query;
+      const query = {};
+      if (status && Order.ORDER_STATUSES.includes(status)) query.status = status;
+      else if (group && ORDER_GROUPS[group]) query.status = { $in: ORDER_GROUPS[group] };
+      if (branch_id) query.branch_id = branch_id;
+      if (date_from || date_to) {
+        query.created_at = {};
+        if (date_from) query.created_at.$gte = new Date(date_from);
+        if (date_to) { const end = new Date(date_to); end.setHours(23, 59, 59, 999); query.created_at.$lte = end; }
+      }
+      if (search) {
+        const regex = { $regex: escapeRegex(search), $options: 'i' };
+        query.$or = [{ order_id: regex }, { vendor_name: regex }, { delivery_address: regex }];
+      }
+      const rows = await Order.find(query).sort({ created_at: -1 }).limit(EXPORT_MAX).lean();
+      const data = await enrichOrders(rows);
+      return sendCSV(res, `orders-${new Date().toISOString().slice(0, 10)}.csv`, data, [
+        { header: 'Order ID', value: (o) => o.order_id },
+        { header: 'Type', value: (o) => o.order_type || 'restaurant' },
+        { header: 'Created At', value: (o) => iso(o.created_at) },
+        { header: 'Delivered At', value: (o) => iso(o.delivered_at) },
+        { header: 'Status', value: (o) => o.status },
+        { header: 'Restaurant', value: (o) => o.vendor_name },
+        { header: 'Branch', value: (o) => o.branch_name },
+        { header: 'City', value: (o) => o.branch_city },
+        { header: 'Customer', value: (o) => o.customer && o.customer.name },
+        { header: 'Customer Phone', value: (o) => o.customer && o.customer.phone },
+        { header: 'Payment', value: (o) => o.payment_method },
+        { header: 'Currency', value: (o) => o.currency },
+        { header: 'Subtotal', value: (o) => num(o.subtotal) },
+        { header: 'Delivery Fee', value: (o) => num(o.delivery_fee) },
+        { header: 'Discount', value: (o) => num(o.discount) },
+        { header: 'Promo Code', value: (o) => o.promo_code },
+        { header: 'Total', value: (o) => num(o.total) },
+        { header: 'Driver', value: (o) => o.driver && o.driver.name },
+        { header: 'Delivery Address', value: (o) => o.delivery_address },
+      ]);
+    } catch (error) {
+      console.error('Admin export orders error:', error);
+      return ResponseHelper.error(res, 'Failed to export orders', 500);
+    }
+  }
+
+  // GET /admin/drivers/export — drivers CSV with delivery count + earnings.
+  async exportDrivers(req, res) {
+    try {
+      const { search, is_active } = req.query;
+      const query = { account_type: 'DRIVER' };
+      if (is_active !== undefined && is_active !== '') query.is_active = is_active === 'true';
+      if (search) {
+        const regex = { $regex: escapeRegex(search), $options: 'i' };
+        query.$or = [{ full_name: regex }, { username: regex }, { phone_number: regex }];
+      }
+      const rows = await User.find(query).select('-password_hash -salt -two_factor_secret').sort({ created_at: -1 }).limit(EXPORT_MAX).lean();
+      const ids = rows.map((d) => d.user_id);
+      const stats = ids.length
+        ? await Order.aggregate([
+            { $match: { driver_user_id: { $in: ids }, status: 'delivered' } },
+            { $group: { _id: '$driver_user_id', deliveries: { $sum: 1 }, earnings: { $sum: '$delivery_fee' } } }
+          ])
+        : [];
+      const statById = new Map(stats.map((s) => [s._id, s]));
+      return sendCSV(res, `drivers-${new Date().toISOString().slice(0, 10)}.csv`, rows, [
+        { header: 'Driver ID', value: (d) => d.user_id },
+        { header: 'Name', value: (d) => d.full_name || d.username },
+        { header: 'Phone', value: (d) => `${d.country_code || ''}${d.phone_number || ''}` },
+        { header: 'Email', value: (d) => d.email },
+        { header: 'Active', value: (d) => (d.is_active === false ? 'no' : 'yes') },
+        { header: 'Vehicle', value: (d) => (d.metadata && d.metadata.vehicle) || 'Motorbike' },
+        { header: 'Total Deliveries', value: (d) => { const s = statById.get(d.user_id); return s ? s.deliveries : 0; } },
+        { header: 'Total Earnings', value: (d) => { const s = statById.get(d.user_id); return num(s ? s.earnings : 0); } },
+        { header: 'Joined', value: (d) => iso(d.created_at) },
+      ]);
+    } catch (error) {
+      console.error('Admin export drivers error:', error);
+      return ResponseHelper.error(res, 'Failed to export drivers', 500);
+    }
+  }
+
+  // GET /admin/users/export — users CSV (any role).
+  async exportUsers(req, res) {
+    try {
+      const { account_type, search, is_active } = req.query;
+      const query = {};
+      if (account_type && ACCOUNT_TYPES.includes(account_type)) query.account_type = account_type;
+      if (is_active !== undefined && is_active !== '') query.is_active = is_active === 'true';
+      if (search) {
+        const regex = { $regex: escapeRegex(search), $options: 'i' };
+        query.$or = [{ full_name: regex }, { username: regex }, { email: regex }, { phone_number: regex }];
+      }
+      const rows = await User.find(query).select('-password_hash -salt -two_factor_secret').sort({ created_at: -1 }).limit(EXPORT_MAX).lean();
+      return sendCSV(res, `users-${new Date().toISOString().slice(0, 10)}.csv`, rows, [
+        { header: 'User ID', value: (u) => u.user_id },
+        { header: 'Name', value: (u) => u.full_name || u.username },
+        { header: 'Phone', value: (u) => `${u.country_code || ''}${u.phone_number || ''}` },
+        { header: 'Email', value: (u) => u.email },
+        { header: 'Account Type', value: (u) => u.account_type },
+        { header: 'Active', value: (u) => (u.is_active === false ? 'no' : 'yes') },
+        { header: 'Joined', value: (u) => iso(u.created_at) },
+      ]);
+    } catch (error) {
+      console.error('Admin export users error:', error);
+      return ResponseHelper.error(res, 'Failed to export users', 500);
+    }
+  }
+
+  // GET /admin/vendors/export — restaurants CSV.
+  async exportVendors(req, res) {
+    try {
+      const { search, approval_status, is_active } = req.query;
+      const query = {};
+      if (approval_status && ['pending', 'approved', 'rejected'].includes(approval_status)) query.approval_status = approval_status;
+      if (is_active !== undefined && is_active !== '') query.is_active = is_active === 'true';
+      if (search) {
+        const regex = { $regex: escapeRegex(search), $options: 'i' };
+        query.$or = [{ name: regex }, { about: regex }];
+      }
+      const rows = await Vendor.find(query).sort({ created_at: -1 }).limit(EXPORT_MAX).lean();
+      const ownerIds = [...new Set(rows.map((v) => v.owner_user_id).filter(Boolean))];
+      const owners = ownerIds.length
+        ? await User.find({ user_id: { $in: ownerIds } }).select('user_id full_name username country_code phone_number').lean()
+        : [];
+      const ownerById = new Map(owners.map((u) => [u.user_id, u]));
+      return sendCSV(res, `restaurants-${new Date().toISOString().slice(0, 10)}.csv`, rows, [
+        { header: 'Vendor ID', value: (v) => v.id },
+        { header: 'Name', value: (v) => v.name },
+        { header: 'Approval', value: (v) => v.approval_status },
+        { header: 'Active', value: (v) => (v.is_active === false ? 'no' : 'yes') },
+        { header: 'Owner', value: (v) => { const o = ownerById.get(v.owner_user_id); return o ? (o.full_name || o.username) : ''; } },
+        { header: 'Owner Phone', value: (v) => { const o = ownerById.get(v.owner_user_id); return o ? `${o.country_code || ''}${o.phone_number || ''}` : ''; } },
+        { header: 'Created', value: (v) => iso(v.created_at) },
+      ]);
+    } catch (error) {
+      console.error('Admin export vendors error:', error);
+      return ResponseHelper.error(res, 'Failed to export restaurants', 500);
+    }
+  }
+
   // GET /admin/vendors — every restaurant, any approval status (incl. pending
   // requests), with branch count + rating. The public /vendors hides these.
   async listVendors(req, res) {
@@ -564,7 +712,11 @@ class AdminController {
   async updateSettings(req, res) {
     try {
       const settings = await PlatformSetting.getSingleton();
-      const { delivery_fee, city_delivery_fees, free_delivery_min_subtotal, currency, support_phone, support_email } = req.body;
+      const {
+        delivery_fee, city_delivery_fees, free_delivery_min_subtotal, currency, support_phone, support_email,
+        box_base_fee, box_city_fees, box_extra_item_fee, box_extra_stop_fee,
+        box_included_items, box_max_items, box_max_stops, box_max_budget
+      } = req.body;
 
       const nonNeg = (v) => {
         const n = Number(v);
@@ -593,6 +745,26 @@ class AdminController {
       if (currency !== undefined) settings.currency = String(currency).trim() || 'SYP';
       if (support_phone !== undefined) settings.support_phone = support_phone ? String(support_phone).trim() : null;
       if (support_email !== undefined) settings.support_email = support_email ? String(support_email).trim() : null;
+
+      // --- Jawlaha Box pricing & limits ---
+      const boxNumFields = {
+        box_base_fee, box_extra_item_fee, box_extra_stop_fee,
+        box_included_items, box_max_items, box_max_stops, box_max_budget
+      };
+      for (const [field, raw] of Object.entries(boxNumFields)) {
+        if (raw === undefined) continue;
+        const v = nonNeg(raw);
+        if (v === null) return ResponseHelper.error(res, `${field} must be a non-negative number`, 400);
+        settings[field] = v;
+      }
+      if (box_city_fees !== undefined) {
+        if (!Array.isArray(box_city_fees)) {
+          return ResponseHelper.error(res, 'box_city_fees must be an array', 400);
+        }
+        settings.box_city_fees = box_city_fees
+          .filter((c) => c && typeof c.city === 'string' && c.city.trim())
+          .map((c) => ({ city: c.city.trim(), fee: nonNeg(c.fee) ?? 0 }));
+      }
 
       await settings.save();
       return ResponseHelper.item(res, settings.toJSON(), 'Platform settings updated');

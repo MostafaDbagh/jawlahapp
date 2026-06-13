@@ -1,10 +1,53 @@
 const { Branch, Vendor, Offer } = require('../models');
+const PlatformSetting = require('../models/PlatformSetting');
 const ResponseHelper = require('../utils/responseHelper');
 const { buildBranchRatings, buildActiveOfferEntitySet } = require('../utils/listStats');
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const ADMIN_TYPES = ['PLATFORM_OWNER', 'PLATFORM_ADMIN'];
+
+// Customer-facing computed fields layered onto a branch's serialized JSON:
+// - is_open / opening_hours: derived live from the branch's work_time schedule
+//   so the app reflects the restaurant's open/close hours automatically.
+// - delivery_fee: company-controlled pricing resolved from the platform settings
+//   for the branch's city (a farther city can cost more than the base fee). We
+//   override the stored legacy field so the quote the customer sees on the
+//   restaurant always matches what checkout will actually charge.
+function branchView(branch, settings, extra = {}) {
+  return {
+    ...branch.toJSON(),
+    is_open: branch.isOpen(),
+    opening_hours: branch.getOpeningHoursText(),
+    closes_at: branch.getClosesAt(),
+    delivery_fee: settings ? settings.resolveDeliveryFee(branch.city) : branch.delivery_fee,
+    ...extra
+  };
+}
+
+// work_time is { <day>: "HH:MM-HH:MM" }. The merchant may set it (it's their
+// schedule, not pricing), but we validate the shape so a bad value can't break
+// isOpen()/checkout. `null` explicitly clears the schedule (always open).
+const WORK_TIME_DAYS = new Set([
+  'sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat',
+  'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'
+]);
+const TIME_RANGE_RE = /^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$/;
+function validateWorkTime(workTime) {
+  if (workTime === null) return null;
+  if (typeof workTime !== 'object' || Array.isArray(workTime)) {
+    return 'work_time must be an object of day → "HH:MM-HH:MM"';
+  }
+  for (const [day, range] of Object.entries(workTime)) {
+    if (!WORK_TIME_DAYS.has(String(day).toLowerCase())) {
+      return `Invalid day "${day}" in work_time`;
+    }
+    if (typeof range !== 'string' || !TIME_RANGE_RE.test(range)) {
+      return `Invalid hours for "${day}" (expected HH:MM-HH:MM)`;
+    }
+  }
+  return null;
+}
 
 // A platform admin may manage any restaurant; a restaurant owner only their own.
 function canManageVendor(user, vendor) {
@@ -15,8 +58,9 @@ function canManageVendor(user, vendor) {
 
 // Fields a branch owner may set/update. Excludes vendor_id so a branch can never
 // be reassigned to another restaurant through the update route. Delivery pricing
-// is intentionally NOT here — see ADMIN_ONLY_BRANCH_FIELDS.
-const BRANCH_EDITABLE = ['name', 'image', 'address', 'city', 'lat', 'lng', 'delivery_time', 'min_order'];
+// is intentionally NOT here — see ADMIN_ONLY_BRANCH_FIELDS. work_time IS here:
+// the restaurant sets its own open/close hours (validated by validateWorkTime).
+const BRANCH_EDITABLE = ['name', 'image', 'address', 'city', 'lat', 'lng', 'delivery_time', 'min_order', 'work_time'];
 
 // Delivery pricing is set by the platform/company, never by the merchant, so only
 // a platform admin/owner may set these. A restaurant owner can't price their own
@@ -105,6 +149,8 @@ class BranchController {
       const offerBranchIds = has_offer === 'true'
         ? await buildActiveOfferEntitySet('branch', branches.map((b) => b.id))
         : null;
+      // Company delivery pricing (one read for the page); resolved per branch city.
+      const settings = await PlatformSetting.getSingleton();
 
       const branchesWithRatings = branches.map((branch) => {
         // When filtering by category, only keep branches that have a matching subcategory
@@ -124,12 +170,10 @@ class BranchController {
           return null;
         }
 
-        return {
-          ...branch.toJSON(),
+        return branchView(branch, settings, {
           rating: rating.averageRating,
-          total_reviews: rating.totalReviews,
-          is_open: branch.isOpen()
-        };
+          total_reviews: rating.totalReviews
+        });
       });
 
       const filteredBranches = branchesWithRatings.filter((branch) => branch !== null);
@@ -184,15 +228,14 @@ class BranchController {
         .slice(0, parseInt(limit));
 
       const ratings = await buildBranchRatings(withinRadius.map((x) => x.branch.id));
+      const settings = await PlatformSetting.getSingleton();
       const nearbyBranches = withinRadius.map(({ branch, distance }) => {
         const rating = ratings[branch.id] || { averageRating: 0, totalReviews: 0 };
-        return {
-          ...branch.toJSON(),
+        return branchView(branch, settings, {
           distance: Math.round(distance * 100) / 100,
           rating: rating.averageRating,
-          total_reviews: rating.totalReviews,
-          is_open: branch.isOpen()
-        };
+          total_reviews: rating.totalReviews
+        });
       });
 
       return ResponseHelper.list(res, nearbyBranches, nearbyBranches.length, 'Nearby branches retrieved successfully');
@@ -214,14 +257,13 @@ class BranchController {
       // One ratings aggregation for the page (the previous `reviews` populate
       // loaded every review per branch and was then ignored).
       const ratings = await buildBranchRatings(branches.map((b) => b.id));
+      const settings = await PlatformSetting.getSingleton();
       const branchesWithRatings = branches.map((branch) => {
         const rating = ratings[branch.id] || { averageRating: 0, totalReviews: 0 };
-        return {
-          ...branch.toJSON(),
+        return branchView(branch, settings, {
           rating: rating.averageRating,
-          total_reviews: rating.totalReviews,
-          is_open: branch.isOpen()
-        };
+          total_reviews: rating.totalReviews
+        });
       });
 
       // Sort by rating and review count
@@ -263,12 +305,11 @@ class BranchController {
       }
 
       const rating = await branch.getAverageRating();
-      const branchData = {
-        ...branch.toJSON(),
+      const settings = await PlatformSetting.getSingleton();
+      const branchData = branchView(branch, settings, {
         rating: rating.averageRating,
-        total_reviews: rating.totalReviews,
-        is_open: branch.isOpen()
-      };
+        total_reviews: rating.totalReviews
+      });
 
       return ResponseHelper.item(res, branchData, 'Branch details retrieved successfully');
     } catch (error) {
@@ -299,15 +340,14 @@ class BranchController {
         Branch.countDocuments(query)
       ]);
 
+      const settings = await PlatformSetting.getSingleton();
       const branchesWithRatings = await Promise.all(
         branches.map(async (branch) => {
           const rating = await branch.getAverageRating();
-          return {
-            ...branch.toJSON(),
+          return branchView(branch, settings, {
             rating: rating.averageRating,
-            total_reviews: rating.totalReviews,
-            is_open: branch.isOpen()
-          };
+            total_reviews: rating.totalReviews
+          });
         })
       );
 
@@ -345,6 +385,11 @@ class BranchController {
         for (const key of ADMIN_ONLY_BRANCH_FIELDS) {
           if (branchData[key] !== undefined) payload[key] = branchData[key];
         }
+      }
+
+      if (payload.work_time !== undefined) {
+        const wtErr = validateWorkTime(payload.work_time);
+        if (wtErr) return ResponseHelper.error(res, wtErr, 400);
       }
 
       const branch = await Branch.create(payload);
@@ -386,6 +431,11 @@ class BranchController {
         for (const key of ADMIN_ONLY_BRANCH_FIELDS) {
           if (req.body[key] !== undefined) updateData[key] = req.body[key];
         }
+      }
+
+      if (updateData.work_time !== undefined) {
+        const wtErr = validateWorkTime(updateData.work_time);
+        if (wtErr) return ResponseHelper.error(res, wtErr, 400);
       }
       await branch.update(updateData);
 
@@ -495,3 +545,6 @@ class BranchController {
 }
 
 module.exports = BranchController;
+// Exposed for unit tests (pure helpers, no request/DB state).
+module.exports.validateWorkTime = validateWorkTime;
+module.exports.branchView = branchView;

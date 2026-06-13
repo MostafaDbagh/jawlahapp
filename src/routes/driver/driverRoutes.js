@@ -22,5 +22,7 @@ router.get('/orders/active', driverController.getActiveOrders);
 router.get('/orders/history', driverController.getHistory);
 router.post('/orders/:id/accept', driverController.acceptOrder);
 router.patch('/orders/:id/status', driverController.updateStatus);
+// Jawlaha Box: driver logs actual item prices while shopping.
+router.patch('/orders/:id/box-purchases', driverController.submitBoxPurchases);
 
 module.exports = router;

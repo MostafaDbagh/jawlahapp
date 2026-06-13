@@ -8,8 +8,10 @@ const PlatformSetting = require('../models/PlatformSetting');
 const ResponseHelper = require('../utils/responseHelper');
 const dispatchService = require('../services/dispatchService');
 const notificationService = require('../services/notificationService');
+const { sendCSV, iso, num } = require('../utils/csv');
 
 const ADMIN_TYPES = ['PLATFORM_OWNER', 'PLATFORM_ADMIN'];
+const EXPORT_MAX = 100000;
 
 // Delivery pricing now lives in PlatformSetting (company-controlled, editable
 // from the admin board) instead of a hardcoded env constant.
@@ -46,6 +48,63 @@ function promoDiscount(promo, amount) {
     return Math.min(Math.round(Number(promo.value) * 100) / 100, amount);
   }
   return 0; // free_delivery carries no line discount
+}
+
+// --- Jawlaha Box helpers ---------------------------------------------------
+// Reject radius: a Box pickup whose pin is within this many metres of a listed
+// branch is treated as that restaurant (can't bypass the restaurant flow).
+const BOX_NEAR_BRANCH_METERS = 150;
+
+// Normalize a place/restaurant name for fuzzy comparison: lowercase, strip
+// Arabic diacritics/tatweel, drop spaces and punctuation. Keeps Arabic + Latin
+// letters and digits so "مطعم جولة" and "مطعم  جولة!" compare equal.
+function normalizeName(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[ً-ْـ]/g, '')        // Arabic harakat + tatweel
+    .replace(/[^\p{L}\p{N}]/gu, '');               // keep letters/numbers only
+}
+
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const R = 6371000;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// THE critical rule: a Box pickup must NOT be one of Jawlaha's listed
+// restaurants. Returns the offending stop+restaurant name on a match, else null.
+// Matches by name (fuzzy, either-direction containment, min 3 chars) OR by a pin
+// within BOX_NEAR_BRANCH_METERS of an active branch.
+async function findListedRestaurantConflict(stops) {
+  const [vendors, branches] = await Promise.all([
+    Vendor.find({ is_active: true }).select('name').lean(),
+    Branch.find({ is_active: true }).select('name lat lng').lean()
+  ]);
+  const names = [
+    ...vendors.map((v) => ({ raw: v.name, norm: normalizeName(v.name) })),
+    ...branches.map((b) => ({ raw: b.name, norm: normalizeName(b.name) }))
+  ].filter((n) => n.norm.length >= 3);
+
+  for (const stop of stops || []) {
+    const sn = normalizeName(stop.place_name);
+    if (sn.length >= 3) {
+      const hit = names.find((n) => sn.includes(n.norm) || n.norm.includes(sn));
+      if (hit) return { stop: stop.place_name, restaurant: hit.raw };
+    }
+    const lat = Number(stop.lat);
+    const lng = Number(stop.lng);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      const near = branches.find((b) =>
+        Number.isFinite(b.lat) && Number.isFinite(b.lng) &&
+        haversineMeters(lat, lng, b.lat, b.lng) <= BOX_NEAR_BRANCH_METERS);
+      if (near) return { stop: stop.place_name, restaurant: near.name };
+    }
+  }
+  return null;
 }
 
 class OrderController {
@@ -287,6 +346,159 @@ class OrderController {
     }
   }
 
+  // GET /orders/box/config — pricing + limits the customer app needs to show a
+  // live fee estimate and enforce limits client-side (the real fee is still
+  // resolved server-side at create). Not sensitive.
+  async getBoxConfig(req, res) {
+    try {
+      const s = await PlatformSetting.getSingleton();
+      return res.json(ResponseHelper.success({
+        base_fee: s.resolveBoxBaseFee(req.query.city || null),
+        extra_item_fee: s.box_extra_item_fee,
+        extra_stop_fee: s.box_extra_stop_fee,
+        included_items: s.box_included_items,
+        max_items: s.box_max_items,
+        max_stops: s.box_max_stops,
+        max_budget: s.box_max_budget,
+        currency: s.currency || 'SYP'
+      }, 'Box config', 1));
+    } catch (error) {
+      console.error('Box config error:', error);
+      res.status(500).json(ResponseHelper.error('Failed to load Box config', error.message, 0));
+    }
+  }
+
+  // POST /orders/box — create a Jawlaha Box errand order (COD). No restaurant /
+  // merchant: the customer lists items + pickup stops, the service fee is
+  // resolved server-side, and the order dispatches to drivers immediately.
+  async createBoxOrder(req, res) {
+    try {
+      const userId = req.user.user_id;
+      const {
+        stops = [],
+        items = [],
+        budget_cap = 0,
+        instructions = null,
+        city = null,
+        delivery_address = null,
+        delivery_lat = null,
+        delivery_lng = null,
+        delivery_note = null,
+        accept_restricted = false
+      } = req.body;
+
+      const num = (v) => { const n = Number(v); return v != null && Number.isFinite(n) ? n : null; };
+      const deliveryLat = num(delivery_lat);
+      const deliveryLng = num(delivery_lng);
+
+      const settings = await PlatformSetting.getSingleton();
+
+      // --- Validate items & stops against the admin limits ---
+      const cleanItems = (Array.isArray(items) ? items : [])
+        .filter((it) => it && typeof it.description === 'string' && it.description.trim());
+      const cleanStops = (Array.isArray(stops) ? stops : [])
+        .filter((s) => s && typeof s.place_name === 'string' && s.place_name.trim());
+      if (cleanItems.length === 0) {
+        return res.status(400).json(ResponseHelper.error('Add at least one item to bring', null, 0));
+      }
+      if (cleanItems.length > settings.box_max_items) {
+        return res.status(400).json(ResponseHelper.error(`You can request at most ${settings.box_max_items} items`, { box_max_items: settings.box_max_items }, 0));
+      }
+      if (cleanStops.length === 0) {
+        return res.status(400).json(ResponseHelper.error('Add at least one pickup place', null, 0));
+      }
+      if (cleanStops.length > settings.box_max_stops) {
+        return res.status(400).json(ResponseHelper.error(`You can request at most ${settings.box_max_stops} pickup places`, { box_max_stops: settings.box_max_stops }, 0));
+      }
+
+      // --- Destination required ---
+      const hasAddress = typeof delivery_address === 'string' && delivery_address.trim().length > 0;
+      if (!hasAddress && (deliveryLat == null || deliveryLng == null)) {
+        return res.status(400).json(ResponseHelper.error('A delivery address or map location is required', null, 0));
+      }
+
+      // --- Budget cap ---
+      const budget = num(budget_cap);
+      if (budget == null || budget <= 0) {
+        return res.status(400).json(ResponseHelper.error('Set a budget for the purchases', null, 0));
+      }
+      if (settings.box_max_budget && budget > settings.box_max_budget) {
+        return res.status(400).json(ResponseHelper.error(`Budget cannot exceed ${settings.box_max_budget} ${settings.currency || 'SYP'}`, { box_max_budget: settings.box_max_budget }, 0));
+      }
+
+      // --- THE critical rule: no pickup may be a listed Jawlaha restaurant ---
+      const conflict = await findListedRestaurantConflict(cleanStops);
+      if (conflict) {
+        return res.status(409).json(ResponseHelper.error(
+          `"${conflict.restaurant}" is a Jawlaha restaurant — order it directly from the app, not via Box`,
+          { listed_restaurant: conflict.restaurant, stop: conflict.stop },
+          0
+        ));
+      }
+
+      // --- Service fee (server-side, admin-priced) ---
+      const serviceFee = settings.computeBoxServiceFee({ city, itemCount: cleanItems.length, stopCount: cleanStops.length });
+
+      const order = await Order.create({
+        user_id: userId,
+        order_type: 'box',
+        branch_id: null,
+        vendor_name: 'Jawlaha Box',
+        items: [],
+        box: {
+          stops: cleanStops.map((s) => ({
+            place_name: String(s.place_name).trim(),
+            address: s.address ? String(s.address).trim() : null,
+            lat: num(s.lat),
+            lng: num(s.lng),
+            note: s.note ? String(s.note).trim() : null
+          })),
+          items: cleanItems.map((it) => ({
+            description: String(it.description).trim(),
+            qty: Math.max(1, Math.round(Number(it.qty) || 1)),
+            category: it.category ? String(it.category).trim() : null,
+            note: it.note ? String(it.note).trim() : null,
+            stop_index: Number.isFinite(Number(it.stop_index)) ? Number(it.stop_index) : 0,
+            status: 'pending',
+            actual_price: null
+          })),
+          budget_cap: budget,
+          service_fee: serviceFee,
+          purchases_total: 0,
+          instructions: instructions ? String(instructions).trim() : null
+        },
+        subtotal: 0,
+        // The driver keeps the service fee (mirrors how restaurant drivers keep
+        // the delivery fee), so it flows through the existing earnings logic.
+        delivery_fee: serviceFee,
+        discount: 0,
+        // COD collected = purchases + fee. At create, purchases are unknown, so
+        // the total starts at the fee and grows when the driver logs purchases.
+        total: serviceFee,
+        currency: settings.currency || 'SYP',
+        payment_method: 'COD',
+        // 'ready' so the existing dispatch + driver board pick it up immediately
+        // (Box has no merchant 'preparing'/'ready' step).
+        status: 'ready',
+        delivery_address,
+        delivery_lat: deliveryLat,
+        delivery_lng: deliveryLng,
+        delivery_note,
+        status_timeline: Order.buildTimeline('ready'),
+        eta_minutes: null
+      });
+
+      // Dispatch to drivers right away (fire-and-forget).
+      dispatchService.dispatchOrder(order.order_id).catch((e) => console.error('box dispatch error:', e));
+      notificationService.notifyOrderStatus(order, 'ready').catch((e) => console.error('notify hook error:', e));
+
+      res.status(201).json(ResponseHelper.success(order, 'Jawlaha Box order placed', 1));
+    } catch (error) {
+      console.error('Create box order error:', error);
+      res.status(500).json(ResponseHelper.error('Failed to place Box order', error.message, 0));
+    }
+  }
+
   // GET /orders?status=&page=&limit=  — order history + stats
   async getOrders(req, res) {
     try {
@@ -414,6 +626,60 @@ class OrderController {
     } catch (error) {
       console.error('Get incoming orders error:', error);
       res.status(500).json(ResponseHelper.error('Failed to get incoming orders', error.message, 0));
+    }
+  }
+
+  // GET /orders/incoming/export — the merchant's own orders as a CSV for their
+  // accountant. Scoped to the owner's branches (admins get everything), honours
+  // the same status/date filters. Money is raw numbers, dates ISO 8601.
+  async exportIncomingOrders(req, res) {
+    try {
+      const isAdmin = ADMIN_TYPES.includes(req.user.account_type);
+      const { status, date_from, date_to } = req.query;
+      const query = {};
+      if (!isAdmin) {
+        const branchIds = await ownedBranchIds(req.user.user_id);
+        if (branchIds.length === 0) {
+          return sendCSV(res, 'orders.csv', [], [{ header: 'Order ID', value: (o) => o.order_id }]);
+        }
+        query.branch_id = { $in: branchIds };
+      }
+      if (status && Order.ORDER_STATUSES.includes(status)) query.status = status;
+      if (date_from || date_to) {
+        query.created_at = {};
+        if (date_from) query.created_at.$gte = new Date(date_from);
+        if (date_to) { const end = new Date(date_to); end.setHours(23, 59, 59, 999); query.created_at.$lte = end; }
+      }
+
+      const rows = await Order.find(query).sort({ created_at: -1 }).limit(EXPORT_MAX).lean();
+      // Resolve customer contact for each order (same as the inbox).
+      const userIds = [...new Set(rows.map((o) => o.user_id).filter(Boolean))];
+      const users = userIds.length
+        ? await User.find({ user_id: { $in: userIds } }).select('user_id full_name username country_code phone_number').lean()
+        : [];
+      const userById = new Map(users.map((u) => [u.user_id, u]));
+
+      return sendCSV(res, `orders-${new Date().toISOString().slice(0, 10)}.csv`, rows, [
+        { header: 'Order ID', value: (o) => o.order_id },
+        { header: 'Created At', value: (o) => iso(o.created_at) },
+        { header: 'Delivered At', value: (o) => iso(o.delivered_at) },
+        { header: 'Status', value: (o) => o.status },
+        { header: 'Restaurant', value: (o) => o.vendor_name },
+        { header: 'Customer', value: (o) => { const u = userById.get(o.user_id); return u ? (u.full_name || u.username) : ''; } },
+        { header: 'Customer Phone', value: (o) => { const u = userById.get(o.user_id); return u ? `${u.country_code || ''}${u.phone_number || ''}` : ''; } },
+        { header: 'Payment', value: (o) => o.payment_method },
+        { header: 'Currency', value: (o) => o.currency },
+        { header: 'Subtotal', value: (o) => num(o.subtotal) },
+        { header: 'Delivery Fee', value: (o) => num(o.delivery_fee) },
+        { header: 'Discount', value: (o) => num(o.discount) },
+        { header: 'Promo Code', value: (o) => o.promo_code },
+        { header: 'Total', value: (o) => num(o.total) },
+        { header: 'Driver', value: (o) => o.driver && o.driver.name },
+        { header: 'Delivery Address', value: (o) => o.delivery_address },
+      ]);
+    } catch (error) {
+      console.error('Export incoming orders error:', error);
+      res.status(500).json(ResponseHelper.error('Failed to export orders', error.message, 0));
     }
   }
 

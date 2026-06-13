@@ -1,8 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const ReviewController = require('../../controllers/reviewController');
-const { authenticateToken } = require('../../middleware/auth');
+const { authenticateToken, requireAccountType } = require('../../middleware/auth');
 const { validateReviewCreate, validateReviewUpdate } = require('../../middleware/validation');
+
+// Merchant/admin: reviews for their restaurant(s) or all (admin). Defined before
+// param routes so "incoming" isn't swallowed by a :id match.
+router.get(
+  '/incoming',
+  authenticateToken,
+  requireAccountType(['SERVICE_PROVIDER_OWNER', 'PLATFORM_OWNER', 'PLATFORM_ADMIN']),
+  ReviewController.getIncomingReviews
+);
 
 // Public routes
 router.get('/branches/:id', ReviewController.getBranchReviews);

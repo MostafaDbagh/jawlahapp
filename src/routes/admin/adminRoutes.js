@@ -13,22 +13,26 @@ router.get('/overview', adminController.overview);
 
 // Users
 router.get('/users', adminController.listUsers);
+router.get('/users/export', adminController.exportUsers);
 router.patch('/users/:id/block', adminController.blockUser);
 router.patch('/users/:id/unblock', adminController.unblockUser);
 
 // Drivers
 router.get('/drivers', adminController.listDrivers);
+router.get('/drivers/export', adminController.exportDrivers);
 router.post('/drivers', adminController.createDriver);
 router.delete('/drivers/:id', adminController.deleteDriver);
 
 // Orders (all platform orders with filters)
 router.get('/orders', adminController.listOrders);
+router.get('/orders/export', adminController.exportOrders);
 // Dispatch ops: force re-assignment + full dispatch audit for one order.
 router.post('/orders/:id/redispatch', adminController.redispatchOrder);
 router.get('/orders/:id/dispatch-history', adminController.getDispatchHistory);
 
 // Restaurants (all approval statuses, incl. pending requests)
 router.get('/vendors', adminController.listVendors);
+router.get('/vendors/export', adminController.exportVendors);
 
 // Platform settings (delivery pricing, support contact, …) — company-controlled.
 router.get('/settings', adminController.getSettings);

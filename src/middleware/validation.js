@@ -428,7 +428,7 @@ const validateBranchCreate = [
   body('min_order').optional().isFloat({ min: 0 }),
   body('delivery_fee').optional().isFloat({ min: 0 }),
   body('free_delivery').optional().isBoolean(),
-  body('work_time').optional().isObject(),
+  body('work_time').optional({ nullable: true }).isObject(), // null = clear schedule (always open)
   handleValidationErrors
 ];
 
@@ -442,7 +442,7 @@ const validateBranchUpdate = [
   body('min_order').optional().isFloat({ min: 0 }),
   body('delivery_fee').optional().isFloat({ min: 0 }),
   body('free_delivery').optional().isBoolean(),
-  body('work_time').optional().isObject(),
+  body('work_time').optional({ nullable: true }).isObject(), // null = clear schedule (always open)
   handleValidationErrors
 ];
 
@@ -495,9 +495,10 @@ const validateProductUpdate = [
 
 // Review validation rules
 const validateReviewCreate = [
-  body('user_id').isUUID().withMessage('Valid user ID is required'),
+  // user_id is taken from the authenticated token, never the body (anti-IDOR).
   body('rating').isInt({ min: 1, max: 5 }).withMessage('Rating must be between 1 and 5'),
-  body('comment').optional().isString(),
+  body('comment').optional({ nullable: true }).isString().isLength({ max: 1000 })
+    .withMessage('Comment must be 1000 characters or fewer'),
   handleValidationErrors
 ];
 
