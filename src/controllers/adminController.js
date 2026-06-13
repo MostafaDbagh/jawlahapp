@@ -367,6 +367,30 @@ class AdminController {
     }
   }
 
+  // DELETE /admin/drivers/:id — permanently remove a driver account. Refuses while the
+  // driver still has an in-progress order assigned, so a live delivery never loses its
+  // driver. Delivered/cancelled orders keep the (now-orphaned) driver_user_id for history.
+  async deleteDriver(req, res) {
+    try {
+      const driver = await User.findOne({ user_id: req.params.id, account_type: 'DRIVER' });
+      if (!driver) return ResponseHelper.error(res, 'Driver not found', 404);
+
+      const activeOrder = await Order.findOne({
+        driver_user_id: driver.user_id,
+        status: { $in: ORDER_GROUPS.active }
+      }).lean();
+      if (activeOrder) {
+        return ResponseHelper.error(res, 'Cannot delete a driver with an active delivery in progress', 409);
+      }
+
+      await User.deleteOne({ user_id: driver.user_id });
+      return ResponseHelper.item(res, { user_id: driver.user_id }, 'Driver deleted successfully');
+    } catch (error) {
+      console.error('Delete driver error:', error);
+      return ResponseHelper.error(res, 'Failed to delete driver', 500);
+    }
+  }
+
   // GET /admin/orders — every order on the platform, with rich filters.
   async listOrders(req, res) {
     try {

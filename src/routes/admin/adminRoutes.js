@@ -19,6 +19,7 @@ router.patch('/users/:id/unblock', adminController.unblockUser);
 // Drivers
 router.get('/drivers', adminController.listDrivers);
 router.post('/drivers', adminController.createDriver);
+router.delete('/drivers/:id', adminController.deleteDriver);
 
 // Orders (all platform orders with filters)
 router.get('/orders', adminController.listOrders);
