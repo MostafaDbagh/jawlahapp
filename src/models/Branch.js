@@ -144,6 +144,12 @@ branchSchema.methods.isOpen = function isOpen() {
   if (!daySchedule) return false;
 
   const [openTime, closeTime] = daySchedule.split('-');
+  // Overnight ranges (e.g. "20:00-02:00") close after midnight: the branch is
+  // open if now is at/after open OR at/before close. Same-day ranges use the
+  // normal between-check.
+  if (closeTime < openTime) {
+    return currentTime >= openTime || currentTime <= closeTime;
+  }
   return currentTime >= openTime && currentTime <= closeTime;
 };
 

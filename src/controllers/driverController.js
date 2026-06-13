@@ -215,6 +215,11 @@ class DriverController {
       }
 
       order.status = status;
+      // Stable payout timestamp the first time the order is delivered (earnings
+      // bucket off this, not the mutable updated_at).
+      if (status === 'delivered' && !order.delivered_at) {
+        order.delivered_at = new Date();
+      }
       // Rebuild the linear timeline so the customer's tracking screen advances
       // (was appending a junk step and leaving the real steps' done flags stale).
       order.status_timeline = Order.buildTimeline(status, order.status_timeline);
@@ -239,9 +244,19 @@ class DriverController {
       const driverId = req.user.user_id;
       const today = startOfToday();
 
+      // Bucket "today" on the stable delivered_at, not updated_at (which shifts
+      // on any later edit and would mis-count earnings). Orders delivered before
+      // delivered_at existed fall back to updated_at so historical totals hold.
       const [allDelivered, todayDelivered] = await Promise.all([
         Order.find({ driver_user_id: driverId, status: 'delivered' }).select('delivery_fee').lean(),
-        Order.find({ driver_user_id: driverId, status: 'delivered', updated_at: { $gte: today } })
+        Order.find({
+          driver_user_id: driverId,
+          status: 'delivered',
+          $or: [
+            { delivered_at: { $gte: today } },
+            { delivered_at: null, updated_at: { $gte: today } }
+          ]
+        })
           .select('delivery_fee')
           .lean()
       ]);
@@ -298,7 +313,19 @@ class DriverController {
       if (!user) {
         return res.status(404).json(ResponseHelper.error('Driver not found', null, 0));
       }
-      user.metadata = { ...(user.metadata || {}), is_online: isOnline };
+      const meta = { ...(user.metadata || {}), is_online: isOnline };
+      // Optional location ping the app sends with the toggle / on a heartbeat, so
+      // dispatch proximity scoring (metadata.live_location) and city filtering
+      // (metadata.service_city) actually work. Ignored when absent/invalid.
+      const lat = Number(req.body.lat);
+      const lng = Number(req.body.lng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        meta.live_location = { lat, lng, at: new Date() };
+      }
+      if (typeof req.body.city === 'string' && req.body.city.trim()) {
+        meta.service_city = req.body.city.trim();
+      }
+      user.metadata = meta;
       user.markModified('metadata');
       await user.save();
 

@@ -166,9 +166,36 @@ async function notifyDriverAssigned(order) {
   }
 }
 
+// Notify the assigned driver that the order they're holding was cancelled, so
+// they stop the delivery instead of driving to a dead order.
+async function notifyDriverOrderCancelled(order) {
+  try {
+    if (!order || !order.driver_user_id) return { ok: false, reason: 'skip' };
+    const driver = await User.findOne({ user_id: order.driver_user_id })
+      .select('user_id fcm_token preferred_language')
+      .lean();
+    if (!driver) return { ok: false, reason: 'no-user' };
+    const lang = pickLang(driver);
+    const title = lang === 'en' ? 'Order cancelled' : 'تم إلغاء الطلب';
+    const body = lang === 'en'
+      ? 'An order assigned to you was cancelled. You can stop this delivery.'
+      : 'تم إلغاء طلب كان معيّناً لك. يمكنك إيقاف هذا التوصيل.';
+    return await deliver(driver, {
+      type: 'order',
+      title,
+      message: body,
+      data: { order_id: order.order_id, status: 'cancelled', kind: 'driver_order_cancelled' }
+    });
+  } catch (e) {
+    console.error('notifyDriverOrderCancelled error:', e.message);
+    return { ok: false, reason: 'error' };
+  }
+}
+
 module.exports = {
   notify,
   notifyOrderStatus,
   notifyDriverOffer,
-  notifyDriverAssigned
+  notifyDriverAssigned,
+  notifyDriverOrderCancelled
 };

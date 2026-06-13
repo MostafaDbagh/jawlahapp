@@ -57,7 +57,7 @@ class PromotionController {
     try {
       const {
         title, code, type, value,
-        min_order_amount, max_discount, usage_limit,
+        min_order_amount, max_discount, usage_limit, per_user_limit,
         start_date, end_date, is_active
       } = req.body;
 
@@ -89,6 +89,12 @@ class PromotionController {
       if (end < start) {
         return ResponseHelper.error(res, 'end_date must be after start_date', 400);
       }
+      // Non-negative caps when provided.
+      for (const [label, raw] of [['usage_limit', usage_limit], ['per_user_limit', per_user_limit], ['max_discount', max_discount], ['min_order_amount', min_order_amount]]) {
+        if (raw != null && raw !== '' && (!Number.isFinite(Number(raw)) || Number(raw) < 0)) {
+          return ResponseHelper.error(res, `${label} must be a non-negative number`, 400);
+        }
+      }
 
       const existing = await Promotion.findOne({ code: normCode });
       if (existing) {
@@ -103,6 +109,7 @@ class PromotionController {
         min_order_amount: min_order_amount != null && min_order_amount !== '' ? Number(min_order_amount) : null,
         max_discount: max_discount != null && max_discount !== '' ? Number(max_discount) : null,
         usage_limit: usage_limit != null && usage_limit !== '' ? Number(usage_limit) : null,
+        per_user_limit: per_user_limit != null && per_user_limit !== '' ? Number(per_user_limit) : null,
         used_count: 0,
         start_date: start,
         end_date: end,
@@ -145,6 +152,24 @@ class PromotionController {
       if (b.min_order_amount !== undefined) promotion.min_order_amount = b.min_order_amount === null || b.min_order_amount === '' ? null : Number(b.min_order_amount);
       if (b.max_discount !== undefined) promotion.max_discount = b.max_discount === null || b.max_discount === '' ? null : Number(b.max_discount);
       if (b.usage_limit !== undefined) promotion.usage_limit = b.usage_limit === null || b.usage_limit === '' ? null : Number(b.usage_limit);
+      if (b.per_user_limit !== undefined) promotion.per_user_limit = b.per_user_limit === null || b.per_user_limit === '' ? null : Number(b.per_user_limit);
+      // Re-validate value/caps on update (create-time validation was previously
+      // not mirrored here, so a code could be PATCHed to e.g. 5000% or negative).
+      if (promotion.type !== 'free_delivery') {
+        const v = Number(promotion.value);
+        if (!Number.isFinite(v) || v <= 0) {
+          return ResponseHelper.error(res, 'A positive value is required for this promo type', 400);
+        }
+        if (promotion.type === 'percentage' && v > 100) {
+          return ResponseHelper.error(res, 'Percentage value cannot exceed 100', 400);
+        }
+      }
+      for (const label of ['usage_limit', 'per_user_limit', 'max_discount', 'min_order_amount']) {
+        const val = promotion[label];
+        if (val != null && (!Number.isFinite(Number(val)) || Number(val) < 0)) {
+          return ResponseHelper.error(res, `${label} must be a non-negative number`, 400);
+        }
+      }
       if (b.start_date !== undefined) {
         const d = new Date(b.start_date);
         if (Number.isNaN(d.getTime())) return ResponseHelper.error(res, 'Invalid start_date', 400);

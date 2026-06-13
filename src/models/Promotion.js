@@ -41,6 +41,13 @@ const promotionSchema = new mongoose.Schema({
     type: Number,
     default: null
   },
+  // Max redemptions allowed per customer (null = unlimited). Enforced at
+  // checkout by counting the user's prior non-cancelled orders that used this
+  // code. Distinct from usage_limit, which is the global cap.
+  per_user_limit: {
+    type: Number,
+    default: null
+  },
   used_count: {
     type: Number,
     default: 0

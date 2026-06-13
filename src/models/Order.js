@@ -72,6 +72,10 @@ const orderSchema = new mongoose.Schema({
   status: { type: String, enum: ORDER_STATUSES, default: 'pending', index: true },
   // Why a cancelled order was rejected (merchant-supplied), null otherwise.
   cancel_reason: { type: String, default: null },
+  // When the order was marked delivered. Stable payout timestamp for the
+  // driver's earnings (status `updated_at` shifts on any later edit, which
+  // would mis-bucket "today's" earnings).
+  delivered_at: { type: Date, default: null },
 
   delivery_address: { type: String, default: null },
   // Optional precise map pin from the customer app, for driver navigation.

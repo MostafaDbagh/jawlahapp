@@ -41,7 +41,9 @@ function promoDiscount(promo, amount) {
     return Math.round(d * 100) / 100;
   }
   if (promo.type === 'fixed') {
-    return Math.round(Number(promo.value) * 100) / 100;
+    // Never discount more than the cart is worth, or the order total goes
+    // negative (clamped to 0) and the platform eats the delivery fee.
+    return Math.min(Math.round(Number(promo.value) * 100) / 100, amount);
   }
   return 0; // free_delivery carries no line discount
 }
@@ -71,6 +73,17 @@ class OrderController {
       const deliveryLat = num(delivery_lat);
       const deliveryLng = num(delivery_lng);
 
+      // A COD delivery needs somewhere to go: require either a written address
+      // or a precise map pin, otherwise the driver has nothing to navigate to.
+      const hasAddress = typeof delivery_address === 'string' && delivery_address.trim().length > 0;
+      const hasPin = deliveryLat != null && deliveryLng != null;
+      if (!hasAddress && !hasPin) {
+        return res.status(400).json(ResponseHelper.error('A delivery address or map location is required', null, 0));
+      }
+
+      // Read the cart up front for validation. The cart is only *claimed*
+      // (emptied) atomically at the very end, so a failed validation never
+      // wipes it.
       const cart = await Cart.findOne({ user_id: userId });
       if (!cart || cart.items.length === 0) {
         return res.status(400).json(ResponseHelper.error('Cart is empty', null, 0));
@@ -84,8 +97,9 @@ class OrderController {
       const branchId = cart.items[0].branch_id || null;
       let deliveryFee = Number(settings.delivery_fee) || 0;
       let vendorName = null;
+      let branch = null;
       if (branchId) {
-        const branch = await Branch.findOne({ id: branchId });
+        branch = await Branch.findOne({ id: branchId });
         // Guard the checkout against a restaurant that can't currently take the
         // order. Without this a customer could order from a branch that is
         // blocked, paused (busy), or whose restaurant isn't approved/active.
@@ -96,6 +110,12 @@ class OrderController {
         // branches without the field (undefined) are treated as accepting.
         if (branch.is_accepting_orders === false) {
           return res.status(409).json(ResponseHelper.error('This restaurant is busy right now and not accepting new orders', null, 0));
+        }
+        // Off-schedule: the restaurant is outside its working hours. Only
+        // enforced when a schedule exists (branches without work_time are
+        // always treated as open).
+        if (branch.work_time && !branch.isOpen()) {
+          return res.status(409).json(ResponseHelper.error('This restaurant is closed right now', null, 0));
         }
         // Apply the city-specific delivery fee (falls back to the global fee).
         deliveryFee = settings.resolveDeliveryFee(branch.city);
@@ -111,6 +131,18 @@ class OrderController {
       }
 
       const subtotal = cart.items.reduce((sum, it) => sum + lineTotal(it), 0);
+
+      // Enforce the restaurant's minimum order. Without this a customer can
+      // place a sub-minimum order the merchant can't profitably fulfil.
+      if (branch && branch.min_order && subtotal < Number(branch.min_order)) {
+        return res.status(409).json(
+          ResponseHelper.error(
+            `This restaurant has a minimum order of ${branch.min_order} ${settings.currency || 'SYP'}`,
+            { min_order: Number(branch.min_order) },
+            0
+          )
+        );
+      }
 
       // Platform-wide free-delivery threshold (0 disables): orders at/above this
       // subtotal ship free regardless of city fee.
@@ -142,22 +174,67 @@ class OrderController {
           { new: true }
         );
         if (claimed) {
-          if (claimed.min_order_amount && subtotal < claimed.min_order_amount) {
-            // Order is below the code's minimum — release the redemption.
+          // Per-customer cap: how many non-cancelled orders this user already
+          // redeemed this code on. Counted after the atomic global claim, then
+          // released if over the cap (mirrors the min-order release below).
+          let perUserExceeded = false;
+          if (claimed.per_user_limit != null) {
+            const usedByUser = await Order.countDocuments({
+              user_id: userId,
+              promo_code: code,
+              status: { $ne: 'cancelled' }
+            });
+            perUserExceeded = usedByUser >= Number(claimed.per_user_limit);
+          }
+          if (
+            (claimed.min_order_amount && subtotal < claimed.min_order_amount) ||
+            perUserExceeded
+          ) {
+            // Order is below the code's minimum, or the customer already used it
+            // up — release the redemption.
             await Promotion.updateOne({ id: claimed.id }, { $inc: { used_count: -1 } });
           } else if (claimed.type === 'free_delivery') {
             deliveryFee = 0;
             appliedPromo = claimed;
           } else {
-            discount = promoDiscount(claimed, subtotal);
+            // Clamp so a fixed/percentage discount never exceeds the subtotal.
+            discount = Math.min(promoDiscount(claimed, subtotal), subtotal);
             appliedPromo = claimed;
           }
         }
       }
 
+      // Release a claimed promo redemption — used when the checkout fails after
+      // the atomic claim (double-submit, order persist error) so a limited code
+      // isn't burned by a failed order.
+      const releasePromo = async () => {
+        if (appliedPromo) {
+          await Promotion.updateOne({ id: appliedPromo.id }, { $inc: { used_count: -1 } }).catch(() => {});
+        }
+      };
+
       const total = Math.max(0, subtotal + deliveryFee - discount);
 
-      const order = await Order.create({
+      // Idempotency / double-submit guard: atomically claim (empty) this exact
+      // cart. The `updated_at` precondition means only one of two concurrent
+      // checkouts wins; the loser sees no match and is rejected instead of
+      // creating a duplicate order. Validation above already passed, so the
+      // cart is only ever emptied on a real checkout.
+      const claimedCart = await Cart.findOneAndUpdate(
+        { user_id: userId, updated_at: cart.updated_at, 'items.0': { $exists: true } },
+        { $set: { items: [] } },
+        { new: false }
+      );
+      if (!claimedCart) {
+        await releasePromo();
+        return res.status(409).json(
+          ResponseHelper.error('This order was already submitted', null, 0)
+        );
+      }
+
+      let order;
+      try {
+        order = await Order.create({
         user_id: userId,
         branch_id: branchId,
         vendor_name: vendorName,
@@ -187,11 +264,15 @@ class OrderController {
         dont_ring_bell: !!dont_ring_bell,
         status_timeline: Order.buildTimeline('pending'),
         eta_minutes: 35
-      });
-
-      // Empty the cart after a successful checkout.
-      cart.items = [];
-      await cart.save();
+        });
+      } catch (e) {
+        // Order persist failed after we already emptied the cart and claimed the
+        // promo — restore both so the customer doesn't silently lose their cart
+        // or burn a limited code.
+        await Cart.updateOne({ user_id: userId }, { $set: { items: cart.items } }).catch(() => {});
+        await releasePromo();
+        throw e;
+      }
 
       // Confirm the order to the customer (persist + push). Fire-and-forget —
       // a notification failure must never break checkout.
@@ -339,7 +420,7 @@ class OrderController {
   // PATCH /orders/:id/status  — restaurant/admin advances an order's status.
   async updateOrderStatus(req, res) {
     try {
-      const { status, eta_minutes, cancel_reason } = req.body;
+      const { status, eta_minutes, cancel_reason, expected_status } = req.body;
       if (!status || !Order.ORDER_STATUSES.includes(status)) {
         return res.status(400).json(
           ResponseHelper.error(`status must be one of: ${Order.ORDER_STATUSES.join(', ')}`, null, 0)
@@ -360,6 +441,15 @@ class OrderController {
         }
       }
 
+      // Optimistic concurrency: the client tells us the status it was showing.
+      // If a colleague (or another tab) already advanced the order, reject so the
+      // UI refreshes instead of silently clobbering their change.
+      if (expected_status && order.status !== expected_status) {
+        return res.status(409).json(
+          ResponseHelper.error('This order was just updated by someone else. Refresh and try again.', { current_status: order.status }, 0)
+        );
+      }
+
       // Prep-time ETA the merchant promises when accepting (or adjusting). Clamped
       // to a sane 1–180 min so the customer's "ready in ~X" stays believable.
       if (eta_minutes != null) {
@@ -371,7 +461,23 @@ class OrderController {
         order.cancel_reason = cancel_reason.trim().slice(0, 300);
       }
 
+      // Was a driver holding this order at the moment it got cancelled? Capture
+      // before we clear the assignment, so we can notify them.
+      const cancelledDriverId =
+        status === 'cancelled' && order.driver_user_id ? order.driver_user_id : null;
+
       order.status = status;
+      // Stable payout timestamp the first time the order is delivered.
+      if (status === 'delivered' && !order.delivered_at) {
+        order.delivered_at = new Date();
+      }
+      // Cancelling releases any driver/offer so a stale assignment doesn't linger
+      // (the driver is notified below).
+      if (status === 'cancelled') {
+        order.driver_user_id = null;
+        order.driver = null;
+        order.assignment_attempt = null;
+      }
       // Rebuild the linear timeline so every step up to the new status is marked
       // done (preserving earlier timestamps). Previously this appended a junk
       // `Status: x` step and left the real steps' done flags stale, so the
@@ -385,6 +491,13 @@ class OrderController {
       notificationService
         .notifyOrderStatus(order, status)
         .catch((e) => console.error('notify hook error:', e));
+
+      // Tell the assigned driver their order was cancelled so they stop the run.
+      if (cancelledDriverId) {
+        notificationService
+          .notifyDriverOrderCancelled({ order_id: order.order_id, driver_user_id: cancelledDriverId })
+          .catch((e) => console.error('notify hook error:', e));
+      }
 
       // Smart dispatch: once an order is ready, route it to the best driver.
       // Fire-and-forget — a dispatch failure must never break the status update.
