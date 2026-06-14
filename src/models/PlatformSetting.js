@@ -25,12 +25,14 @@ const platformSettingSchema = new mongoose.Schema({
   support_email: { type: String, default: null },
 
   // --- Jawlaha Box (errand service) pricing & limits — admin-controlled. ---
-  // service fee = box_base_fee(city) + extra-item fee + extra-stop fee.
-  box_base_fee: { type: Number, default: 5000, min: 0 },
-  box_city_fees: { type: [cityFeeSchema], default: [] },     // per-city base-fee overrides
-  box_extra_item_fee: { type: Number, default: 1000, min: 0 }, // per item beyond box_included_items
-  box_extra_stop_fee: { type: Number, default: 2000, min: 0 }, // per pickup stop beyond the first
-  box_included_items: { type: Number, default: 3, min: 0 },   // items covered by the base fee
+  // service fee = box_base_fee(city) + extra-item fee + extra-stop fee. Default
+  // pricing: 20,000 minimum (covers the first item + one stop), +10,000 per extra
+  // item. The admin tunes all of these from the web portal (Settings → صندوق جولة).
+  box_base_fee: { type: Number, default: 20000, min: 0 },
+  box_city_fees: { type: [cityFeeSchema], default: [] },      // per-city base-fee overrides
+  box_extra_item_fee: { type: Number, default: 10000, min: 0 }, // per item beyond box_included_items
+  box_extra_stop_fee: { type: Number, default: 2000, min: 0 }, // per pickup stop beyond the first (TBD)
+  box_included_items: { type: Number, default: 1, min: 0 },   // items covered by the base fee
   box_max_items: { type: Number, default: 5, min: 1 },        // hard cap on items
   box_max_stops: { type: Number, default: 3, min: 1 },        // hard cap on pickup stops
   box_max_budget: { type: Number, default: 100000, min: 0 }   // max goods budget a customer may set
